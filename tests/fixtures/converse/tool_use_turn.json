@@ -1,0 +1,14 @@
+{
+  "output": {
+    "message": {
+      "role": "assistant",
+      "content": [
+        {"text": "I will look at your datasets."},
+        {"toolUse": {"toolUseId": "tooluse_abc123", "name": "list_datasets", "input": {}}}
+      ]
+    }
+  },
+  "stopReason": "tool_use",
+  "usage": {"inputTokens": 200, "outputTokens": 30, "totalTokens": 230},
+  "metrics": {"latencyMs": 610}
+}

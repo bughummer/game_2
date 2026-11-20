@@ -1,0 +1,193 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "<experiment_id>",
+  "model_name": "logistic_regression",
+  "display_name": "Logistic Regression",
+  "status": "COMPLETED",
+  "problem_type": "binary_classification",
+  "library": "scikit-learn",
+  "library_version": "1.9.0",
+  "hyperparameters": {
+    "C": 1.0,
+    "max_iter": 1000,
+    "solver": "lbfgs",
+    "random_state": 42,
+    "n_jobs": null,
+    "class_weight": "balanced"
+  },
+  "features_used": [
+    "tenure_months",
+    "monthly_charges",
+    "is_business",
+    "signup_date__year",
+    "signup_date__month",
+    "signup_date__day_of_week",
+    "contract_annual",
+    "contract_monthly"
+  ],
+  "feature_count": 8,
+  "training_row_count": 320,
+  "validation_row_count": 80,
+  "training_started_at": "<masked>",
+  "training_completed_at": "<masked>",
+  "training_duration_seconds": "<masked>",
+  "primary_metric": "roc_auc",
+  "primary_score": 0.949818,
+  "metrics": {
+    "values": {
+      "accuracy": 0.9125,
+      "precision": 0.98,
+      "recall": 0.890909,
+      "f1": 0.933333,
+      "positive_class_rate": 0.6875,
+      "predicted_positive_rate": 0.625,
+      "roc_auc": 0.949818,
+      "pr_auc": 0.977286,
+      "log_loss": 0.33487
+    },
+    "confusion_matrix": {
+      "labels": [
+        "0",
+        "1"
+      ],
+      "matrix": [
+        [
+          24,
+          1
+        ],
+        [
+          6,
+          49
+        ]
+      ]
+    },
+    "warnings": []
+  },
+  "train_metrics": {
+    "values": {
+      "accuracy": 0.846875,
+      "precision": 0.930348,
+      "recall": 0.842342,
+      "f1": 0.884161,
+      "positive_class_rate": 0.69375,
+      "predicted_positive_rate": 0.628125,
+      "roc_auc": 0.92255,
+      "pr_auc": 0.962381,
+      "log_loss": 0.35307
+    },
+    "confusion_matrix": {
+      "labels": [
+        "0",
+        "1"
+      ],
+      "matrix": [
+        [
+          84,
+          14
+        ],
+        [
+          35,
+          187
+        ]
+      ]
+    },
+    "warnings": []
+  },
+  "feature_importance": {
+    "method": "coefficient_magnitude",
+    "is_signed": true,
+    "entries": [
+      {
+        "feature": "contract_monthly",
+        "importance": 0.2929900441118795,
+        "raw_value": 1.6994612781171763,
+        "rank": 1
+      },
+      {
+        "feature": "contract_annual",
+        "importance": 0.29297079119913216,
+        "raw_value": -1.6993496034020705,
+        "rank": 2
+      },
+      {
+        "feature": "monthly_charges",
+        "importance": 0.19857016731835198,
+        "raw_value": 1.151787636230829,
+        "rank": 3
+      },
+      {
+        "feature": "tenure_months",
+        "importance": 0.1422212028185604,
+        "raw_value": -0.8249407513147404,
+        "rank": 4
+      },
+      {
+        "feature": "is_business",
+        "importance": 0.04189494055540199,
+        "raw_value": -0.24300767433496478,
+        "rank": 5
+      },
+      {
+        "feature": "signup_date__day_of_week",
+        "importance": 0.02016606306959557,
+        "raw_value": -0.11697135792696006,
+        "rank": 6
+      },
+      {
+        "feature": "signup_date__month",
+        "importance": 0.011090659185449539,
+        "raw_value": -0.06433032866901385,
+        "rank": 7
+      },
+      {
+        "feature": "signup_date__year",
+        "importance": 9.613174162889703e-05,
+        "raw_value": 0.0005576031533477333,
+        "rank": 8
+      }
+    ],
+    "note": "Coefficients are comparable because numeric features are standardized. Sign indicates direction for binary problems; multiclass values are mean absolute coefficients across classes."
+  },
+  "preprocessing": {
+    "numeric_columns": [
+      "tenure_months",
+      "monthly_charges"
+    ],
+    "categorical_columns": [
+      "contract"
+    ],
+    "boolean_columns": [
+      "is_business"
+    ],
+    "datetime_columns": [
+      "signup_date"
+    ],
+    "derived_datetime_features": [
+      "year",
+      "month",
+      "day_of_week"
+    ],
+    "dropped_columns": {},
+    "output_feature_names": [
+      "tenure_months",
+      "monthly_charges",
+      "is_business",
+      "signup_date__year",
+      "signup_date__month",
+      "signup_date__day_of_week",
+      "contract_annual",
+      "contract_monthly"
+    ],
+    "output_feature_count": 8,
+    "strategy": "dense_numeric",
+    "fitted_on": "train",
+    "config_digest": "2e7da43549d89a33"
+  },
+  "artifacts": {
+    "model_uri": "s3://mlf-test-artifacts/ml-factory/experiments/<experiment_id>/models/logistic_regression/model.joblib",
+    "metadata_uri": "s3://mlf-test-artifacts/ml-factory/experiments/<experiment_id>/models/logistic_regression/metadata.json",
+    "preprocessor_uri": "s3://mlf-test-artifacts/ml-factory/experiments/<experiment_id>/preprocessing/preprocessor_dense_numeric.joblib"
+  },
+  "package_versions": "<masked>",
+  "warnings": []
+}

@@ -1,0 +1,5 @@
+{
+  "Error": {"Code": "ValidationException", "Message": "This model doesn't support tool use in toolConfig."},
+  "ResponseMetadata": {"HTTPStatusCode": 400, "RequestId": "00000000-0000-0000-0000-000000000002"},
+  "operation_name": "Converse"
+}

@@ -1,0 +1,23 @@
+{
+  "version": "2026-10-14-draft",
+  "currency": "USD",
+  "unit": "per instance-hour, on-demand",
+  "source": "https://aws.amazon.com/sagemaker/ai/pricing/",
+  "retrieved_on": "2026-10-14",
+  "verified": false,
+  "verification_note": "Draft values from prior knowledge; the AWS pricing page could not be fetched when this was written. Confirm every rate against the source page, then set verified=true, update retrieved_on and bump version. Until then the platform refuses to submit jobs (ML_FACTORY_REQUIRE_VERIFIED_PRICES).",
+  "regions": {
+    "us-east-1": {
+      "training": {
+        "ml.m5.large": 0.115,
+        "ml.m5.xlarge": 0.23,
+        "ml.m5.2xlarge": 0.461
+      },
+      "processing": {
+        "ml.m5.large": 0.115,
+        "ml.m5.xlarge": 0.23,
+        "ml.m5.2xlarge": 0.461
+      }
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SubmitAndObserveJobs",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:CreateTrainingJob",
+        "sagemaker:CreateProcessingJob",
+        "sagemaker:DescribeTrainingJob",
+        "sagemaker:DescribeProcessingJob",
+        "sagemaker:StopTrainingJob",
+        "sagemaker:StopProcessingJob",
+        "sagemaker:AddTags"
+      ],
+      "Resource": "arn:aws:sagemaker:${REGION}:${ACCOUNT_ID}:*/mlf-*"
+    },
+    {
+      "Sid": "CountRunningTrainingJobsForThePlatformCap",
+      "Effect": "Allow",
+      "Action": ["sagemaker:ListTrainingJobs"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassOnlyTheJobRoleToSageMaker",
+      "Effect": "Allow",
+      "Action": ["iam:PassRole"],
+      "Resource": "${SAGEMAKER_JOB_ROLE_ARN}",
+      "Condition": {"StringEquals": {"iam:PassedToService": "sagemaker.amazonaws.com"}}
+    },
+    {
+      "Sid": "ArtifactBucketObjects",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::${ARTIFACT_BUCKET}/*"
+    },
+    {
+      "Sid": "ArtifactBucketList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+      "Resource": "arn:aws:s3:::${ARTIFACT_BUCKET}"
+    },
+    {
+      "Sid": "BoundedLogReadForDiagnostics",
+      "Effect": "Allow",
+      "Action": ["logs:FilterLogEvents", "logs:GetLogEvents"],
+      "Resource": "arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:/aws/sagemaker/*"
+    },
+    {
+      "Sid": "InvokeBedrockReasoning",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel"],
+      "Resource": "${BEDROCK_MODEL_ARN}"
+    }
+  ]
+}

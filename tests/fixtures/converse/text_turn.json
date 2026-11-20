@@ -1,0 +1,6 @@
+{
+  "output": {"message": {"role": "assistant", "content": [{"text": "The dataset has 400 rows."}]}},
+  "stopReason": "end_turn",
+  "usage": {"inputTokens": 120, "outputTokens": 9, "totalTokens": 129},
+  "metrics": {"latencyMs": 420}
+}

@@ -1,0 +1,13 @@
+# Example LibreChat MCP configuration for ML Factory.
+#
+# Same shape and transport as the existing MCP servers in this deployment (e.g. successfactors):
+# SSE, a plain internal URL, no auth block yet. Drop this block into your LibreChat
+# `librechat.yaml` and set the host/port to wherever the ML Factory MCP is served
+# (`python -m mcp_server.app`, which serves SSE at /sse by default).
+
+mcpServers:
+  ml-factory:
+    type: sse
+    url: "http://ml-factory:8000/sse"
+    # Authentication is deferred until the ML Factory auth mechanism is decided (task 6.5 / Q8).
+    # Until then the server uses a flagged development identity and trusts no raw header.

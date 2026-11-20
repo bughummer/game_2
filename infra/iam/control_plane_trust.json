@@ -1,0 +1,11 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TheInternalServerIdentityMayAssumeThisRole",
+      "Effect": "Allow",
+      "Principal": {"AWS": "${SERVER_BASE_IDENTITY_ARN}"},
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}

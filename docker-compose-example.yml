@@ -1,0 +1,32 @@
+version: '3'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        http_proxy: http://10.0.139.93:8080
+        https_proxy: http://10.0.139.93:8080
+    image: cv_screening_app
+    container_name: cv_screening_app_newui
+    ports:
+      - "7502:8526"
+    environment:
+      - http_proxy=http://10.0.139.93:8080
+      - https_proxy=http://10.0.139.93:8080
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+    networks:
+      - dev_network
+    volumes:
+      - .:/app
+      - ./config.yaml:/app/config.yaml:ro
+
+networks:
+  dev_network:
+    external: true

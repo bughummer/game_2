@@ -1,0 +1,44 @@
+
+
+FROM python:3.10-slim-bullseye
+
+ARG http_proxy=http://10.0.139.93:8080
+ARG https_proxy=http://10.0.139.93:8080
+ARG HTTP_PROXY=http://10.0.139.93:8080
+ARG HTTPS_PROXY=http://10.0.139.93:8080
+
+ENV http_proxy=${http_proxy}
+ENV https_proxy=${https_proxy}
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+
+WORKDIR /app
+
+RUN echo 'Acquire::http::Proxy "http://10.0.139.93:8080";' > /etc/apt/apt.conf.d/99proxy && \
+    echo 'Acquire::https::Proxy "http://10.0.139.93:8080";' >> /etc/apt/apt.conf.d/99proxy
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender-dev \
+        libgl1-mesa-glx \
+        ffmpeg \
+        tesseract-ocr \
+        poppler-utils && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8526
+
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8526"]

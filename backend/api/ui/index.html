@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ML Factory — control console</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+  </head>
+  <body>
+    <nav class="rail">
+      <div class="brand">
+        ML <span>Factory</span>
+        <small>control console</small>
+      </div>
+      <ol class="steps" id="steps"></ol>
+    </nav>
+
+    <main class="surface">
+      <h1 class="view-title" id="view-title">Start an experiment</h1>
+      <p class="view-sub" id="view-sub">
+        One dataset, one target. The platform profiles it, you approve the features, you pick the
+        algorithms, then you validate the models on data of your choosing.
+      </p>
+      <div id="view"></div>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/ui/app.js"></script>
+  </body>
+</html>

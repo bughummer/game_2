@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "<experiment_id>",
+  "generated_at": "<masked>",
+  "problem_type": "binary_classification",
+  "primary_metric": "roc_auc",
+  "direction": "maximize",
+  "best_model": "logistic_regression",
+  "best_score": 0.949818,
+  "models": [
+    {
+      "model_name": "logistic_regression",
+      "display_name": "Logistic Regression",
+      "status": "COMPLETED",
+      "primary_score": 0.949818,
+      "metrics": {
+        "accuracy": 0.9125,
+        "precision": 0.98,
+        "recall": 0.890909,
+        "f1": 0.933333,
+        "positive_class_rate": 0.6875,
+        "predicted_positive_rate": 0.625,
+        "roc_auc": 0.949818,
+        "pr_auc": 0.977286,
+        "log_loss": 0.33487
+      },
+      "training_duration_seconds": "<masked>",
+      "feature_count": 8,
+      "rank": 1,
+      "warning_count": 0,
+      "failure_message": null
+    },
+    {
+      "model_name": "random_forest",
+      "display_name": "Random Forest",
+      "status": "COMPLETED",
+      "primary_score": 0.907636,
+      "metrics": {
+        "accuracy": 0.85,
+        "precision": 0.90566,
+        "recall": 0.872727,
+        "f1": 0.888889,
+        "positive_class_rate": 0.6875,
+        "predicted_positive_rate": 0.6625,
+        "roc_auc": 0.907636,
+        "pr_auc": 0.95511,
+        "log_loss": 0.360552
+      },
+      "training_duration_seconds": "<masked>",
+      "feature_count": 8,
+      "rank": 2,
+      "warning_count": 0,
+      "failure_message": null
+    }
+  ],
+  "succeeded_count": 2,
+  "failed_count": 0,
+  "warnings": []
+}

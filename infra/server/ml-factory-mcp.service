@@ -1,0 +1,27 @@
+# systemd unit for the ML Factory MCP server on the internal server (Linux).
+# Install: copy to /etc/systemd/system/, then
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ml-factory-mcp
+# Logs:    journalctl -u ml-factory-mcp -f
+[Unit]
+Description=ML Factory MCP server (LibreChat tools + SageMaker status poller)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mlfactory
+Group=mlfactory
+WorkingDirectory=/opt/ml-factory
+EnvironmentFile=/etc/ml-factory/ml-factory.env
+ExecStart=/opt/ml-factory/.venv/bin/python -m mcp_server.app
+Restart=on-failure
+RestartSec=5
+# Basic hardening; the process only needs its venv, /tmp and outbound HTTPS.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+
+[Install]
+WantedBy=multi-user.target

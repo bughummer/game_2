@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DescribeNetworkForVpcJobs",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeDhcpOptions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageJobNetworkInterfaces",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateNetworkInterface",
+        "ec2:CreateNetworkInterfacePermission",
+        "ec2:DeleteNetworkInterface",
+        "ec2:DeleteNetworkInterfacePermission"
+      ],
+      "Resource": [
+        "arn:aws:ec2:${REGION}:${ACCOUNT_ID}:network-interface/*",
+        "arn:aws:ec2:${REGION}:${ACCOUNT_ID}:subnet/*",
+        "arn:aws:ec2:${REGION}:${ACCOUNT_ID}:security-group/*"
+      ]
+    }
+  ]
+}

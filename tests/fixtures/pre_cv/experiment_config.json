@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "<experiment_id>",
+  "name": "golden",
+  "created_at": "<masked>",
+  "created_by": null,
+  "dataset": {
+    "uri": "s3://mlf-test-artifacts/ml-factory/experiments/<experiment_id>/input/churn.csv",
+    "file_format": "csv",
+    "version_id": null,
+    "etag": "<masked>",
+    "size_bytes": "<masked>",
+    "last_modified": "<masked>",
+    "original_filename": "churn.csv",
+    "source_uri": "s3://mlf-test-approved/curated/churn.csv"
+  },
+  "target_column": "churned",
+  "problem_type": "binary_classification",
+  "requested_problem_type": "auto",
+  "primary_metric": "roc_auc",
+  "feature_selection": {
+    "selected_features": [
+      "tenure_months",
+      "monthly_charges",
+      "contract",
+      "is_business",
+      "signup_date"
+    ],
+    "excluded_features": [
+      "churn_copy",
+      "customer_id",
+      "notes",
+      "region_code"
+    ],
+    "exclusion_reasons": {},
+    "decided_at": "<masked>",
+    "decided_by": null
+  },
+  "derived_features": [],
+  "split": {
+    "strategy": "stratified_random",
+    "validation_fraction": 0.2,
+    "random_seed": 42,
+    "stratify": true,
+    "group_column": null,
+    "time_column": null
+  },
+  "preprocessing": {
+    "numeric_imputation": "median",
+    "numeric_fill_value": 0.0,
+    "categorical_imputation": "constant",
+    "categorical_fill_value": "__missing__",
+    "scale_numeric": true,
+    "one_hot_max_categories": 50,
+    "one_hot_min_frequency": null,
+    "datetime_features": [
+      "year",
+      "month",
+      "day_of_week"
+    ],
+    "derive_datetime_features": true,
+    "drop_text_columns": true,
+    "drop_constant_columns": true
+  },
+  "models": [
+    {
+      "name": "logistic_regression",
+      "params": {},
+      "enabled": true
+    },
+    {
+      "name": "random_forest",
+      "params": {},
+      "enabled": true
+    }
+  ],
+  "class_weighting": "auto",
+  "environment": {
+    "python_version": "<masked>",
+    "platform": "<masked>",
+    "package_versions": "<masked>",
+    "ml_factory_version": "2.0.0",
+    "captured_at": "<masked>"
+  },
+  "artifact_prefix": "s3://mlf-test-artifacts/ml-factory/experiments/<experiment_id>"
+}

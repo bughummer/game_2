@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ml-factory"
+version = "2.0.0.dev0"
+description = "ML Factory 2.0: deterministic EDA, leakage screening and classical-ML baselines on SageMaker + S3"
+requires-python = ">=3.12"
+# Loose lower bounds only (stock-image migration, decision B6): the stage runs on the AWS
+# prebuilt image whose versions are frozen by its digest, and reproducibility is the recorded
+# image digest plus the per-experiment pip-freeze — not pins in this file. Locally, pip resolves
+# current versions. Bounds are set only where the code needs a specific API.
+dependencies = [
+    "pydantic>=2",
+    "pandas>=2",
+    "numpy>=1.26",
+    "scikit-learn>=1.3",
+    "scipy>=1.11",
+    "pyarrow>=14",
+    "joblib>=1.3",
+]
+
+[project.optional-dependencies]
+# What the stage container needs on top of the engine.
+jobs = ["boto3>=1.34", "botocore>=1.34"]
+# XGBoost stays (decision B3); CatBoost is dropped and reached via per-experiment requirements.
+models = ["xgboost>=2"]
+dictionary = ["openpyxl>=3.1"]
+# Control plane. sagemaker provides image_uris for the stage-image resolver (decision B8).
+backend = ["boto3>=1.34", "botocore>=1.34", "pydantic-settings>=2", "sagemaker>=2.200"]
+mcp = ["fastmcp==4.1.0"]
+# Optional PDF rendering for reports. Needs native libs (pango/cairo); when absent the
+# reporting service produces JSON + HTML and reports pdf_available=false.
+reports = ["weasyprint>=62"]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.8",
+    "moto[s3]==5.2.4",
+    "hypothesis==6.170.12",
+]
+
+[tool.setuptools.packages.find]
+include = ["ml_engine*", "jobs*", "backend*", "mcp_server*", "scripts*"]
+exclude = ["tests*", "infra*", "container*", "scripts*"]
+
+[tool.setuptools.package-data]
+# The thin static UI is served by the API as files, so it must ship with the package.
+"backend.api.ui" = ["*.html", "*.css", "*.js"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF", "N", "ARG", "PTH"]
+ignore = ["N818", "RUF012", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG", "E501"]
+# scikit-learn's transformer API fixes these signatures: capital X, and a y that
+# stateless transformers ignore.
+"ml_engine/preprocessing/transformers.py" = ["N803", "ARG002"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers -p anyio"
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "slow: long-running end-to-end tests",
+    "aws: needs real AWS; runs only with ML_FACTORY_AWS_TESTS=1",
+    "anyio: async test run via the anyio pytest plugin",
+]

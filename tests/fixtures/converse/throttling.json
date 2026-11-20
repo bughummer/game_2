@@ -1,0 +1,5 @@
+{
+  "Error": {"Code": "ThrottlingException", "Message": "Too many requests, please wait before trying again."},
+  "ResponseMetadata": {"HTTPStatusCode": 429, "RequestId": "00000000-0000-0000-0000-000000000001"},
+  "operation_name": "Converse"
+}

@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "<experiment_id>",
+  "generated_at": "<masked>",
+  "problem_type": "binary_classification",
+  "target_column": "churned",
+  "requested_features": [
+    "tenure_months",
+    "monthly_charges",
+    "contract",
+    "is_business",
+    "signup_date"
+  ],
+  "usable_features": [
+    "tenure_months",
+    "monthly_charges",
+    "is_business",
+    "contract",
+    "signup_date"
+  ],
+  "derived_features": [],
+  "rejected_proposals": [],
+  "derived_leakage": null,
+  "dropped_features": {},
+  "rows_before": 400,
+  "rows_after": 400,
+  "rows_dropped_missing_target": 0,
+  "split": {
+    "strategy": "stratified_random",
+    "train_row_count": 320,
+    "validation_row_count": 80,
+    "validation_fraction_actual": 0.2,
+    "random_seed": 42,
+    "stratified": true,
+    "train_class_distribution": {
+      "1": 222,
+      "0": 98
+    },
+    "validation_class_distribution": {
+      "1": 55,
+      "0": 25
+    }
+  },
+  "preprocessing": {
+    "dense_numeric": {
+      "numeric_columns": [
+        "tenure_months",
+        "monthly_charges"
+      ],
+      "categorical_columns": [
+        "contract"
+      ],
+      "boolean_columns": [
+        "is_business"
+      ],
+      "datetime_columns": [
+        "signup_date"
+      ],
+      "derived_datetime_features": [
+        "year",
+        "month",
+        "day_of_week"
+      ],
+      "dropped_columns": {},
+      "output_feature_names": [
+        "tenure_months",
+        "monthly_charges",
+        "is_business",
+        "signup_date__year",
+        "signup_date__month",
+        "signup_date__day_of_week",
+        "contract_annual",
+        "contract_monthly"
+      ],
+      "output_feature_count": 8,
+      "strategy": "dense_numeric",
+      "fitted_on": "train",
+      "config_digest": "2e7da43549d89a33"
+    }
+  },
+  "warnings": []
+}
