@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from backend.agent.limits import (
     LimitName,
@@ -17,6 +19,7 @@ from backend.agent.limits import (
 )
 from backend.errors import ValidationError
 from ml_engine.contracts.agent import SessionCounters, SessionLimits, SessionStatus
+from tests.agent.strategies import SETTINGS
 
 RAW = {
     "max_converse_turns": 40,
@@ -128,3 +131,43 @@ def test_accrue_active_only_while_running() -> None:
         if status is not SessionStatus.RUNNING:
             assert accrue_active(counters, status, 5.0).active_seconds == 10.0
     assert accrue_active(counters, SessionStatus.RUNNING, -1.0).active_seconds == 10.0
+
+
+# Feature: ml-assistant, Property 25: Repeated identical calls
+@settings(**SETTINGS)
+@given(
+    calls=st.lists(st.sampled_from(["a", "b"]), min_size=1, max_size=50),
+    threshold=st.integers(1, 6),
+)
+def test_repeated_calls_reset_on_change(calls, threshold):
+    limits = _limits(max_repeated_identical_calls=threshold)
+    counters = SessionCounters()
+    run = 0
+    for index, call in enumerate(calls):
+        run = run + 1 if index and call == calls[index - 1] else 1
+        counters, refused = register_call(counters, call, limits)
+        assert (counters.tool_calls, refused) == (index + 1, run > threshold)
+
+
+# Feature: ml-assistant, Property 26: Active time counts only running time
+@settings(**SETTINGS)
+@given(
+    timeline=st.lists(
+        st.tuples(st.sampled_from(list(SessionStatus)), st.integers(0, 600)), max_size=25
+    ),
+    cap=st.integers(1, 1800),
+)
+def test_active_time_over_status_changes(timeline, cap):
+    counters = SessionCounters()
+    for status, elapsed in timeline:
+        counters = accrue_active(counters, status, elapsed)
+        stop = check_loop_top(counters, _limits(max_active_seconds=cap))
+        if counters.active_seconds >= cap:
+            assert (stop.name, stop.configured, stop.current) == (
+                LimitName.ACTIVE,
+                cap,
+                counters.active_seconds,
+            )
+        else:
+            assert stop is None
+    assert counters.active_seconds == sum(dt for status, dt in timeline if status is SessionStatus.RUNNING)

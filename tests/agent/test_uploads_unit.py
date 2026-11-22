@@ -7,6 +7,8 @@ from io import BytesIO
 
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from backend.agent.tools_core import dataset_id_for
 from backend.agent.uploads import (
@@ -19,6 +21,7 @@ from backend.agent.uploads import (
 from backend.config import Settings
 from backend.errors import ValidationError
 from ml_engine.contracts.agent import DatasetRef, LocalFileRef, Session
+from tests.agent.strategies import SETTINGS
 from tests.support.datasets import ARTIFACT_ROOT
 from tests.support.in_memory_store import InMemoryObjectStore
 
@@ -96,9 +99,14 @@ def test_unregistered_file_is_refused():
     assert isinstance(outcome, UploadRefusal) and outcome.reason == "unknown_file"
 
 
-def test_same_sha256_reuses_the_registered_dataset():
-    existing = _dataset(SHA)
-    file = _file(name="renamed.csv", sha=SHA.upper())
+# Feature: ml-assistant, Property 33: Duplicate uploads reuse the dataset, and ids are stable
+@settings(**SETTINGS)
+@given(
+    digest=st.binary(min_size=32, max_size=32), name=st.from_regex(r"[a-z]{1,8}", fullmatch=True)
+)
+def test_same_sha256_reuses_the_registered_dataset(digest, name):
+    existing = _dataset(digest.hex())
+    file = _file(name=name + ".csv", sha=digest.hex().upper())
     outcome = reuse_or_plan(_session(file, [existing]), file, _settings())
     assert isinstance(outcome, UploadReuse)
     assert outcome.to_result() == {"reused": True, "dataset_id": existing.dataset_id}

@@ -49,10 +49,13 @@ async def test_business_context_and_leakage_flow_through_tools(inline_mcp, datas
             )
         ).data
         assert context["investigate_leakage"] is True
+        args = {"experiment_id": experiment_id}
+        assert (await client.call_tool("get_business_context", args)).data == context
 
         report = (
             await client.call_tool("investigate_leakage", {"experiment_id": experiment_id})
         ).data
+        assert (await client.call_tool("get_leakage_investigation", args)).data == report
         warnings = report["warnings"]
         # The exact-duplicate rule establishes leakage for churn_copy.
         established = [

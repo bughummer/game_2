@@ -6,12 +6,16 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
+from hypothesis import given
+from hypothesis import settings as property_settings
+from hypothesis import strategies as st
 
 from backend.agent import tools_features
 from backend.agent.tools import AwaitedJobSpec, ToolContext, ToolRegistry
 from backend.auth import Principal
-from ml_engine.contracts.agent import ToolClass
+from ml_engine.contracts.agent import Mode, ToolClass
 from ml_engine.io import ExperimentLayout
+from tests.agent.strategies import SETTINGS
 from tests.mcp import conftest as mcp_fixtures
 from tests.mcp.conftest import DEV_USER
 from tests.support.datasets import APPROVED_PREFIX
@@ -196,3 +200,26 @@ def test_define_then_approve_and_reads_leave_the_selection_alone(
         )
     # Approval is a config change but never rewrites the saved selection.
     assert stored_selection() == before
+
+
+# Feature: ml-assistant, Property 22: Features are never excluded without an approved decision
+@property_settings(**SETTINGS)
+@given(
+    candidates=st.sets(st.from_regex(r"[a-z]{1,6}", fullmatch=True), min_size=1, max_size=8),
+    data=st.data(),
+    mode=st.sampled_from(list(Mode)),
+)
+def test_excluding_any_candidate_requires_approval(candidates, data, mode):
+    from tests.agent.test_policy_rules import APP, _inp, gate
+
+    chosen = data.draw(st.sets(st.sampled_from(sorted(candidates)), min_size=1))
+    review = SimpleNamespace(features=[SimpleNamespace(feature=name) for name in candidates])
+    experiments = SimpleNamespace(feature_review=lambda eid: review)
+    registry = ToolRegistry()
+    tools_features.register(registry, SimpleNamespace())
+    spec = registry.get("decide_features")
+    args = spec.input_model(experiment_id="exp", selected_features=sorted(chosen))
+    protected = spec.protected(_ctx(SimpleNamespace(experiments=experiments)), args)
+    assert protected == (chosen != candidates)
+    if protected:
+        assert gate(_inp(spec, mode, protected=protected)).action == APP

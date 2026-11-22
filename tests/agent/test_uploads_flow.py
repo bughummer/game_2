@@ -13,16 +13,19 @@ from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from backend.agent.runner import InlineAgentRunner
 from backend.agent.service import LocalFileInput
 from backend.agent.tools_core import dataset_id_for
 from backend.agent.wiring import build_agent_service
 from backend.config import Settings
-from backend.errors import AuthorizationError, ValidationError
+from backend.errors import AppError, AuthorizationError, ValidationError
 from backend.services.datasets import DatasetService
 from ml_engine.contracts.agent import CallState, DatasetRef, SessionStatus
 from ml_engine.io import ExperimentLayout
+from tests.agent.strategies import SETTINGS
 from tests.support.agent_fakes import FakeClock
 from tests.support.datasets import ARTIFACT_ROOT
 from tests.support.in_memory_store import InMemoryObjectStore
@@ -249,3 +252,93 @@ def test_non_owner_is_refused_on_every_upload_action():
     with pytest.raises(AuthorizationError):
         env.service.complete_upload(BOB, env.sid, action.action_id)
     assert _session(env) == before
+
+
+# Feature: ml-assistant, Property 32: Upload refusal happens before transfer
+@settings(**SETTINGS)
+@given(
+    base=st.from_regex(r"[a-z]{1,8}", fullmatch=True),
+    size=st.integers(0, LIMIT * 2),
+    extension=st.sampled_from([".txt", ".zip", ".csv", ".PARQUET"]),
+)
+def test_upload_preflight_rejects_before_ticket(base, size, extension):
+    file = _file(name=base + extension, size=size)
+    fid = LocalFileInput.model_validate(file).to_ref().file_id
+    env = _env(_upload_turn(fid), text_turn("Finished."), files=[file])
+    session = _session(env)
+    assert not _upload_objects(env) and not session.datasets and session.client_action is None
+    allowed = size <= LIMIT and extension.lower() in {".csv", ".parquet"}
+    assert bool(session.approvals) == allowed
+    assert _upload_record(env).state == (CallState.AWAITING_APPROVAL if allowed else CallState.REFUSED)
+
+
+# Feature: ml-assistant, Property 34: A failed upload leaves nothing behind
+@settings(**SETTINGS)
+@given(excess=st.integers(1, 1024), failure=st.sampled_from(["missing", "size", "registration"]))
+def test_failed_transfer_can_retry(excess, failure):
+    from unittest.mock import patch
+
+    env = _env(_upload_turn(_file_id()), text_turn("Done."))
+    action = _to_client_action(env)
+    env.service.client_action(ALICE, env.sid)
+    uri = _session(env).client_action.dataset_uri
+    if failure == "size":
+        env.objects.write_bytes(uri, b"x" * (LIMIT + excess))
+    elif failure == "registration":
+        env.objects.write_bytes(uri, GOOD_CSV)
+    datasets = env.service._services.datasets
+    with patch.object(datasets, "register", wraps=datasets.register) as register:
+        if failure == "registration":
+            register.side_effect = ValidationError("Registration unavailable")
+        with pytest.raises(AppError):
+            env.service.complete_upload(ALICE, env.sid, action.action_id)
+    assert not _session(env).datasets and not _upload_objects(env)
+    env.service.client_action(ALICE, env.sid)
+    env.objects.write_bytes(_session(env).client_action.dataset_uri, GOOD_CSV)
+    env.service.complete_upload(ALICE, env.sid, action.action_id)
+    assert len(_session(env).datasets) == 1
+
+
+@pytest.mark.parametrize("case", ["oversized", "extension", "corrupt", "duplicate"])
+def test_local_candidate_examples(tmp_path, case):
+    from scripts.agent_smoke import local_file_entry
+
+    names = {
+        "oversized": "too-big.csv",
+        "extension": "wrong.txt",
+        "corrupt": "broken.parquet",
+        "duplicate": "renamed.csv",
+    }
+    path = tmp_path / names[case]
+    content = b"x" * (LIMIT + 1) if case == "oversized" else GOOD_CSV
+    path.write_bytes(content)
+    file = local_file_entry(path)
+    ref = LocalFileInput.model_validate(file).to_ref()
+    datasets = []
+    if case == "duplicate":
+        uri = UPLOADS + "old/original.csv"
+        datasets.append(
+            DatasetRef(
+                dataset_id=dataset_id_for(uri),
+                uri=uri,
+                filename="original.csv",
+                sha256=ref.sha256,
+                size_bytes=len(content),
+                file_format="csv",
+                columns=[],
+                row_count=3,
+            )
+        )
+    env = _env(_upload_turn(ref.file_id), text_turn("Done."), files=[file], datasets=datasets)
+    if case == "corrupt":
+        action = _to_client_action(env)
+        env.service.client_action(ALICE, env.sid)
+        env.objects.write_bytes(_session(env).client_action.dataset_uri, path.read_bytes())
+        with pytest.raises(AppError, match=r"(?i)CSV.*Parquet"):
+            env.service.complete_upload(ALICE, env.sid, action.action_id)
+    else:
+        assert not _session(env).approvals
+        expected = CallState.SUCCEEDED if case == "duplicate" else CallState.REFUSED
+        assert _upload_record(env).state is expected
+    assert _session(env).datasets == datasets
+    assert not _upload_objects(env)

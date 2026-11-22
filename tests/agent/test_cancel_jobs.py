@@ -7,8 +7,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from backend.agent.service import CODE_APPROVAL_REJECTED, CODE_CANCELLED, AgentService
 from ml_engine.contracts.agent import ApprovalStatus, CallState, Mode, SessionStatus
+from tests.agent.strategies import SETTINGS
 from tests.agent.test_jobs_recovery import ALICE, EXP, PLAN, SID, TRAIN, Harness, _call
 from tests.support.scripted_converse import text_turn, tool_turn
 
@@ -170,3 +174,21 @@ def test_cancel_resolves_pending_uses_in_request_order():
     assert all(e.data["error_code"] == CODE_CANCELLED for e in results[1:])
     assert all(a.status is ApprovalStatus.REJECTED for a in s.approvals)
     assert orchestrator.stopped == []  # no job was awaited
+
+
+# Feature: ml-assistant, Property 30: Cancellation is final
+@settings(**SETTINGS)
+@given(finished=st.lists(st.booleans(), min_size=1, max_size=6), stop=st.booleans())
+def test_cancel_with_mixed_job_states(finished, stop):
+    ids = [f"exec-{i}" for i in range(len(finished))]
+    h = Harness([tool_turn(PLAN), tool_turn(TRAIN)], job_ids=ids)
+    h.run()
+    service, orchestrator, _ = _service(h)
+    for job, done in zip(ids, finished, strict=True):
+        if done:
+            h.analysis.states[job] = ("SUCCEEDED", None)
+    service.get_session(ALICE, SID)
+    service.cancel(ALICE, SID, stop_jobs=stop)
+    assert h.run().status is SessionStatus.CANCELLED
+    assert h.calls == 1
+    assert orchestrator.stopped == [job for job, done in zip(ids, finished, strict=True) if stop and not done]

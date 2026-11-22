@@ -43,6 +43,7 @@ from backend.agent.jobs import (
     observe_jobs,
 )
 from backend.agent.limits import LimitName, raise_limit
+from backend.agent.results import ScrubContext, scrub_sensitive
 from backend.agent.store import SessionInUse, SessionStore
 from backend.agent.tools import ToolContext, ToolOutput
 from backend.agent.uploads import RowCounter, dataset_id_for, format_for
@@ -56,6 +57,7 @@ from backend.errors import (
     FeatureDisabledError,
     ValidationError,
 )
+from backend.services.datasets import DatasetParseError
 from ml_engine.contracts.agent import (
     AgentAuditRecord,
     ApprovalRequest,
@@ -266,7 +268,7 @@ class AgentService:
         # until every check passed.
         self._require_enabled()
         user = self._user(who)
-        goal = validate_text(goal, what="goal")
+        goal = scrub_sensitive(validate_text(goal, what="goal"), ScrubContext())
         limits = limits_from_settings(self._settings)
         now = self._clock()
         chosen, grant = self._autopilot(user, mode, autopilot_max_spend_usd, limits, now)
@@ -317,7 +319,7 @@ class AgentService:
         self._require_enabled()
         user = self._user(who)
         with self._owned(session_id, user) as s:
-            text = validate_text(text, what="message")
+            text = scrub_sensitive(validate_text(text, what="message"), ScrubContext())
             if s.status is not SessionStatus.WAITING_FOR_USER:
                 raise ConflictError(
                     f"Session {session_id} is {s.status.value}; a message can be sent only "
@@ -564,7 +566,7 @@ class AgentService:
     def _reject(
         self, s: Session, approval: ApprovalRequest, user: str, now: datetime, reason: str | None
     ) -> None:
-        reason = reason[:MAX_REASON_CHARS] if reason else None
+        reason = scrub_sensitive(reason, ScrubContext())[:MAX_REASON_CHARS] if reason else None
         approval.status = ApprovalStatus.REJECTED
         approval.decided_by = user
         approval.decided_at = now
@@ -979,7 +981,13 @@ class AgentService:
                 {"reason": "unsupported_format", "supported_formats": ["CSV", "Parquet"]},
             )
         datasets = self._services.datasets
-        registered = datasets.register(uri)
+        try:
+            registered = datasets.register(uri)
+        except DatasetParseError as exc:
+            raise ValidationError(
+                f"The file could not be read as {file_format}. Supported formats: CSV and Parquet.",
+                {"reason": "invalid_content", "supported_formats": ["CSV", "Parquet"]},
+            ) from exc
         # The S3 client lets the counter read a Parquet footer or stream a CSV, not load it.
         rows = RowCounter(store, getattr(datasets, "_s3", None)).count(uri, file_format)
         ref = DatasetRef(

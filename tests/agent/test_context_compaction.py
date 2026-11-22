@@ -1,5 +1,8 @@
 from datetime import UTC, datetime
 
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from backend.agent.context import build_messages
 from backend.agent.converse import TextBlock, ToolResultBlock, ToolUseBlock
 from backend.agent.results import envelope
@@ -15,11 +18,12 @@ from ml_engine.contracts.agent import (
     TranscriptEntry,
     args_hash,
 )
+from tests.agent.strategies import SETTINGS
 
 NOW = datetime(2025, 1, 1, tzinfo=UTC)
 
 
-def _session() -> Session:
+def _session(turns=5) -> Session:
     session = Session(
         session_id="s1",
         owner="u1",
@@ -39,8 +43,10 @@ def _session() -> Session:
         plan=Plan(steps=[PlanStep(text="profile the data")], accepted_at=NOW),
     )
     seq = 1
-    session.transcript.append(TranscriptEntry(seq=seq, at=NOW, kind="user_message", text="predict churn"))
-    for i in range(1, 6):
+    session.transcript.append(
+        TranscriptEntry(seq=seq, at=NOW, kind="user_message", text="predict churn")
+    )
+    for i in range(1, turns + 1):
         call_id = f"c{i}"
         session.tool_calls.append(
             ToolCallRecord(
@@ -53,10 +59,23 @@ def _session() -> Session:
                 state=CallState.SUCCEEDED,
             )
         )
-        view = envelope(call_id, "get_metrics", {"metrics": {"auc": 0.5 + i / 100, "n": 100 * i}}, truncated=False)
-        session.transcript.append(TranscriptEntry(seq=seq + 1, at=NOW, kind="tool_call", tool_call_id=call_id))
+        view = envelope(
+            call_id,
+            "get_metrics",
+            {"metrics": {"auc": 0.5 + i / 100, "n": 100 * i}},
+            truncated=False,
+        )
         session.transcript.append(
-            TranscriptEntry(seq=seq + 2, at=NOW, kind="tool_result", tool_call_id=call_id, data={"model_view": view})
+            TranscriptEntry(seq=seq + 1, at=NOW, kind="tool_call", tool_call_id=call_id)
+        )
+        session.transcript.append(
+            TranscriptEntry(
+                seq=seq + 2,
+                at=NOW,
+                kind="tool_result",
+                tool_call_id=call_id,
+                data={"model_view": view},
+            )
         )
         seq += 2
     return session
@@ -100,3 +119,17 @@ def test_last_reported_input_tokens_triggers_compaction() -> None:
     )
     _, info = build_messages(session, 40_000)
     assert info.compacted_through_seq == 5
+
+
+# Feature: ml-assistant, Property 29: Compaction preserves ids and engine numbers
+@settings(**SETTINGS)
+@given(turns=st.integers(4, 15), budget=st.integers(1, 2000))
+def test_compaction_preserves_each_summarized_call(turns, budget):
+    session = _session(turns)
+    before = session.model_dump()
+    messages, info = build_messages(session, budget)
+    assert session.model_dump() == before
+    for i in range(1, turns + 1):
+        if 2 * i + 1 <= info.compacted_through_seq:
+            summary = messages[0].blocks[-1].text
+            assert f"[c{i}] get_metrics succeeded metrics.auc={0.5 + i / 100} metrics.n={100*i}" in summary

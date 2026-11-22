@@ -177,7 +177,7 @@ class RowCounter:
                 return self._count_csv(uri)
         except ValidationError:
             raise
-        except Exception as error:  # noqa: BLE001 - any parse failure is a format refusal
+        except Exception as error:  # any parse failure is a format refusal
             raise ValidationError(
                 f"The file could not be read as {file_format}. Supported formats: "
                 f"{_SUPPORTED_TEXT}.",

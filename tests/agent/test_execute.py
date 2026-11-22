@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pydantic import BaseModel
 
 from backend.agent.execute import ToolExecutor
@@ -12,6 +14,7 @@ from backend.audit import AuditWriteError
 from backend.errors import AppError, AuthorizationError, NotFoundError
 from backend.orchestration.guards import GuardViolation
 from ml_engine.contracts.agent import DatasetRef, Session, ToolClass
+from tests.agent.strategies import SETTINGS
 
 
 class Args(BaseModel):
@@ -126,7 +129,7 @@ def test_rejections_are_audited_without_the_value(arguments, reason):
 
 
 def test_success_uses_owner_identity_resolves_dataset_and_records_ref():
-    ex, spec, audit, log = build(ok_handler)
+    ex, spec, _audit, log = build(ok_handler)
     result = ex.execute(
         make_session(), spec, {"experiment_id": "e1", "dataset_id": "d1", "instance_type": "ml.m5.large"}
     )
@@ -164,7 +167,7 @@ def test_known_errors_are_structured(exc, code, kind):
     assert isinstance(exc, (AppError, GuardViolation))
 
 
-def test_unexpected_exception_is_generic_and_names_only_the_tool():
+def test_unexpected_exception_is_generic_and_names_only_the_tool(caplog):
     def handler(ctx, args):
         raise RuntimeError("secret detail s3://b/k")
 
@@ -172,4 +175,59 @@ def test_unexpected_exception_is_generic_and_names_only_the_tool():
     result = ex.execute(make_session(), spec, {})
     assert result.error.code == "TOOL_FAILED"
     assert "secret" not in result.error.message and "s3" not in str(result.error.as_dict())
+    assert "secret detail" not in caplog.text
     assert result.error.details == {"tool": "t"}
+
+
+# Feature: ml-assistant, Property 10: Unapproved inputs never execute
+@settings(**SETTINGS)
+@given(
+    suffix=st.from_regex(r"[a-z]{1,12}", fullmatch=True),
+    field=st.sampled_from(
+        ["path", "uri", "signed", "dataset_id", "instance_type", "experiment_id"]
+    ),
+)
+def test_unapproved_arguments_never_reach_handler(field, suffix):
+    arguments = {
+        "path": {"note": "/private/" + suffix},
+        "uri": {"note": "s3://foreign/" + suffix},
+        "signed": {"note": "https://example.com/?X-Amz-Signature=" + suffix},
+    }.get(field, {field: "unknown-" + suffix})
+
+    def forbidden(ctx, args):
+        pytest.fail("Rejected arguments reached the handler")
+
+    executor, spec, audit, log = build(forbidden)
+    result = executor.execute(make_session(), spec, arguments)
+    assert result.error.code == "INPUT_REJECTED"
+    assert [r.event_type for r in audit.records] == ["input_rejected"]
+    assert not log.events
+
+
+# Feature: ml-assistant, Property 12: Service failures become structured errors
+@settings(**SETTINGS)
+@given(
+    detail=st.text(alphabet="abcd ", min_size=1, max_size=40),
+    kind=st.sampled_from(["app", "guard", "orchestration", "unexpected"]),
+)
+def test_service_errors_are_structured(kind, detail):
+    from backend.agent.execute import OrchestrationError
+
+    errors = {
+        "app": NotFoundError(detail),
+        "guard": GuardViolation("GUARD", detail),
+        "orchestration": OrchestrationError("ORCHESTRATION", detail),
+        "unexpected": RuntimeError(detail),
+    }
+
+    def fail(ctx, args):
+        raise errors[kind]
+
+    executor, spec, *_ = build(fail)
+    result = executor.execute(make_session(), spec, {})
+    if kind == "unexpected":
+        assert result.error.code == "TOOL_FAILED"
+        assert result.error.details == {"tool": "t"}
+        assert result.error.message == "The tool t failed."
+    else:
+        assert (result.error.code, result.error.message) == (errors[kind].code, detail)

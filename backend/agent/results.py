@@ -141,7 +141,7 @@ def _json_safe(value: Any, depth: int = 0) -> Any:
     if hasattr(value, "model_dump") and callable(value.model_dump):
         try:
             return _json_safe(value.model_dump(mode="json"), depth + 1)
-        except Exception:  # noqa: BLE001 - fall through to a generic rendering
+        except Exception:  # fall through to a generic rendering
             return f"[unserializable {type(value).__name__}]"
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return _json_safe(dataclasses.asdict(value), depth + 1)
@@ -208,11 +208,12 @@ def _rewrite_uri(uri: str, ctx: ScrubContext) -> str:
     return REDACTED_URI
 
 
-def _scrub(value: Any, ctx: ScrubContext) -> Any:
+def scrub_sensitive(value: Any, ctx: ScrubContext) -> Any:
+    """Remove credentials and rewrite storage URIs before persisting untrusted JSON."""
     if isinstance(value, str):
         return _scrub_string(value, ctx)
     if isinstance(value, list):
-        return [_scrub(item, ctx) for item in value]
+        return [scrub_sensitive(item, ctx) for item in value]
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, item in value.items():
@@ -220,7 +221,7 @@ def _scrub(value: Any, ctx: ScrubContext) -> Any:
             if lowered in _DROP_KEYS:
                 continue
             new_key = _unique_key(out, _scrub_string(key, ctx))
-            out[new_key] = REDACTED if lowered in _SECRET_KEYS else _scrub(item, ctx)
+            out[new_key] = REDACTED if lowered in _SECRET_KEYS else scrub_sensitive(item, ctx)
         return out
     return value
 
@@ -335,7 +336,9 @@ def _drop_largest_key(body: dict[str, Any]) -> bool:
     return True
 
 
-def _cap(call_id: str, tool: str, body: dict[str, Any], truncated: bool, max_bytes: int) -> tuple[dict, dict, bool]:
+def _cap(
+    call_id: str, tool: str, body: dict[str, Any], truncated: bool, max_bytes: int
+) -> tuple[dict, dict, bool]:
     """Return (final body, envelope, truncated) with the envelope within ``max_bytes``."""
     env = envelope(call_id, tool, body, truncated=truncated)
     if _size(env) <= max_bytes:
@@ -350,7 +353,9 @@ def _cap(call_id: str, tool: str, body: dict[str, Any], truncated: bool, max_byt
         if _drop_largest_key(body):
             continue
         break
-    names = [str(k)[:64] for k in body if k != "_dropped_keys"] + list(body.get("_dropped_keys", []))
+    names = [str(k)[:64] for k in body if k != "_dropped_keys"] + list(
+        body.get("_dropped_keys", [])
+    )
     while True:
         body = {"_omitted_keys": names} if names else {}
         env = envelope(call_id, tool, body, truncated=True)
@@ -410,7 +415,7 @@ def shape_result(
     if not isinstance(safe, dict):
         safe = {"result": safe}
 
-    scrubbed = _scrub(safe, ctx)
+    scrubbed = scrub_sensitive(safe, ctx)
     full = apply_governance(_drop_rows(scrubbed), policy)
 
     injection = detect_injection(_walk_strings(full))

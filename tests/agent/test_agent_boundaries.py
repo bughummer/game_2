@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import subprocess
 import sys
+from importlib.util import resolve_name
 from pathlib import Path
 
 from ml_engine.io.layout import AGENT_NAMESPACE, AgentLayout, owner_key
@@ -146,3 +147,43 @@ def test_inherited_manifest_check_still_passes():
         check=False,
     )
     assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
+
+
+def test_agent_import_boundaries():
+    for path in (ROOT / "backend" / "agent").glob("*.py"):
+        tree = _parse(path)
+        inside_functions = {
+            id(node)
+            for fn in ast.walk(tree)
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+            for stmt in fn.body
+            for node in ast.walk(stmt)
+        }
+        catalogue = path.stem == "catalogue" or path.stem.startswith("tools_")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                module = resolve_name("." * node.level + (node.module or ""), "backend.agent")
+                names = [f"{module}.{alias.name}" for alias in node.names]
+            else:
+                continue
+            for name in names:
+                root = name.split(".")[0]
+                assert root not in {"mcp_server", "ml_factory_cli"}, (path, name)
+                if path.stem != "jobs":
+                    assert root != "jobs", (path, name)
+                if root == "boto3":
+                    assert id(node) in inside_functions and not catalogue, (path, name)
+                if catalogue:
+                    assert not name.startswith(
+                        (
+                            "ml_engine.io.s3",
+                            "ml_engine.io.S3ObjectStore",
+                            "backend.agent.store",
+                            "backend.aws.clients",
+                            "backend.aws.build_client",
+                            "botocore",
+                            "backend.aws.s3",
+                        )
+                    ), (path, name)

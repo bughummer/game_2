@@ -114,8 +114,8 @@ def _embedded_versions(payload: dict[str, Any]) -> Iterator[tuple[str, object]]:
     """Yield ``(contract, schema_version)`` for the Session and each embedded contract.
 
     The Session comes first. An embedded record that is missing or not an object is left to
-    model validation (``corrupt_content``); a missing ``schema_version`` (Session or embedded)
-    means the default and is not a version error.
+    model validation (``corrupt_content``); a missing embedded ``schema_version`` means the
+    default and is not a version error. The top-level Session version is required.
     """
     if "schema_version" in payload:
         yield "Session", payload["schema_version"]
@@ -179,9 +179,13 @@ class SessionStore:
         try:
             payload = json.loads(raw)
         except (ValueError, UnicodeDecodeError):
-            raise SessionLoadError(session_id, "corrupt_content", "record is not valid JSON") from None
+            raise SessionLoadError(
+                session_id, "corrupt_content", "record is not valid JSON"
+            ) from None
         if not isinstance(payload, dict):
             raise SessionLoadError(session_id, "corrupt_content", "record is not an object")
+        if "schema_version" not in payload:
+            raise SessionLoadError(session_id, "corrupt_content", "record has no schema_version")
         for contract, version in _embedded_versions(payload):
             if not isinstance(version, str) or version not in SUPPORTED_VERSIONS[contract]:
                 raise SessionLoadError(
@@ -192,7 +196,9 @@ class SessionStore:
         try:
             session = Session.model_validate(payload)
         except PydanticValidationError:
-            raise SessionLoadError(session_id, "corrupt_content", "record failed validation") from None
+            raise SessionLoadError(
+                session_id, "corrupt_content", "record failed validation"
+            ) from None
         if session.session_id != session_id:
             raise SessionLoadError(session_id, "corrupt_content", "record names another session")
         return LoadedSession(session=session, etag=self._etag(layout.session))
@@ -252,7 +258,7 @@ class SessionStore:
                 self._store.write_bytes(index_uri, index_data)
             except SessionConflict:
                 raise
-            except Exception:  # noqa: BLE001 - any store failure is retried, none is logged
+            except Exception:  # any store failure is retried, none is logged
                 continue
             # Success: reflect what was stored on the caller's object.
             session.revision = revision
@@ -280,7 +286,7 @@ class SessionStore:
         for _ in range(self._attempts):
             try:
                 self._store.write_bytes(uri, data)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
             return ResultRef(uri=uri, sha256=hashlib.sha256(data).hexdigest(), size_bytes=len(data))
         raise SessionPersistError(session_id)
@@ -335,7 +341,9 @@ class SessionStore:
         try:
             result = json.loads(data)
         except (ValueError, UnicodeDecodeError):
-            raise SessionLoadError(session_id, "corrupt_content", "tool result is not JSON") from None
+            raise SessionLoadError(
+                session_id, "corrupt_content", "tool result is not JSON"
+            ) from None
         if not isinstance(result, dict):
             raise SessionLoadError(session_id, "corrupt_content", "tool result is not an object")
         return result

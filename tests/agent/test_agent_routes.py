@@ -179,6 +179,7 @@ def test_owner_runs_an_upload_session_end_to_end(price_table_path):
         session_id=sid, approval_id=approval["approval_id"],
     )
     assert status == 200 and view["client_action"]["status"] == "ready", view
+    assert _call(env, "GET", SID, session_id=sid) == (200, view)
 
     # The pre-signed PUT goes to the owner in this response only; the session view and the
     # stored record never carry it.

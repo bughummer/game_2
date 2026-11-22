@@ -2,8 +2,12 @@
 plus an in-process FastMCP client so every tool is exercised with no AWS and no network.
 """
 
+import json
+from pathlib import Path
+
 import boto3
 import pytest
+from fastmcp import Client
 from moto import mock_aws
 
 from backend.config import Settings
@@ -63,8 +67,35 @@ def container(settings, s3_client, sagemaker):
     )
 
 
+@pytest.fixture(scope="session")
+def surface_baseline():
+    return json.loads((Path(__file__).parents[1] / "fixtures" / "pre_agent_surface.json").read_text())
+
+
 @pytest.fixture
-def mcp(container):
+def check_tool_results(monkeypatch, surface_baseline):
+    """Check response keys on the successful calls made by the offline workflows."""
+    call_tool = Client.call_tool
+
+    async def checked(client, name, *args, **kwargs):
+        result = await call_tool(client, name, *args, **kwargs)
+        if result.data is None:
+            assert name in {
+                "get_feature_proposals",
+                "get_leakage_investigation",
+                "get_business_context",
+                "get_report",
+            }
+        else:
+            assert isinstance(result.data, dict), name
+            assert sorted(result.data) in surface_baseline["result_keys"][name], name
+        return result
+
+    monkeypatch.setattr(Client, "call_tool", checked)
+
+
+@pytest.fixture
+def mcp(container, check_tool_results):
     return build_mcp_server(container)
 
 
@@ -89,5 +120,5 @@ def inline_container(settings, s3_client, sagemaker):
 
 
 @pytest.fixture
-def inline_mcp(inline_container):
+def inline_mcp(inline_container, check_tool_results):
     return build_mcp_server(inline_container)

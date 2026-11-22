@@ -3,11 +3,14 @@
 from dataclasses import replace
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pydantic import BaseModel
 
 from backend.agent.policy import GateAction, GateInput, gate
 from backend.agent.tools import ToolFlags, ToolOutput, ToolSpec
 from ml_engine.contracts.agent import Mode, ToolClass
+from tests.agent.strategies import SETTINGS
 
 S, A = Mode.SUPERVISED, Mode.AUTOPILOT
 EX, APP, REF = GateAction.EXECUTE, GateAction.REQUIRE_APPROVAL, GateAction.REFUSE
@@ -85,3 +88,71 @@ CASES = [
 def test_gate_rule(spec, mode, overrides, action, reason):
     decision = gate(_inp(spec, mode, **overrides))
     assert (decision.action, decision.reason) == (action, reason)
+
+
+# Feature: ml-assistant, Property 13: Approval gate
+@settings(**SETTINGS)
+@given(
+    mode=st.sampled_from([S, A]),
+    kind=st.sampled_from([MUT, COST]),
+    protected=st.booleans(),
+    script=st.booleans(),
+    upload=st.booleans(),
+    uploaded=st.booleans(),
+    config=st.booleans(),
+)
+def test_gate_combinations(mode, kind, protected, script, upload, uploaded, config):
+    spec = _spec(kind, always_approve=script, upload=upload, changes_config=config)
+    decision = gate(_inp(spec, mode, protected=protected, upload_approved_before=uploaded))
+    required = (
+        script or protected or (upload and not uploaded) or (mode is S and (kind is COST or config))
+    )
+    assert decision.action == (APP if required else EX)
+
+
+# Feature: ml-assistant, Property 21: Autopilot executes only within every limit
+@settings(**SETTINGS)
+@given(
+    cap=st.integers(1, 30),
+    estimates=st.lists(st.one_of(st.none(), st.integers(0, 10)), max_size=20),
+    refused=st.booleans(),
+)
+def test_autopilot_spend_over_sequence(cap, estimates, refused):
+    spend = 0
+    for estimate in estimates:
+        decision = gate(
+            _inp(
+                _spec(COST),
+                A,
+                estimate_usd=estimate,
+                session_spend_usd=spend,
+                autopilot_max_spend_usd=cap,
+                guard_refused_before=refused,
+            )
+        )
+        allowed = not refused and estimate is not None and spend + estimate <= cap
+        assert decision.action == (EX if allowed else APP)
+        if allowed:
+            spend += estimate
+        assert spend <= cap
+
+
+# Feature: ml-assistant, Property 6: Plan validity and plan first
+@settings(**SETTINGS)
+@given(
+    lengths=st.lists(st.integers(0, 201), max_size=11),
+    mode=st.sampled_from([S, A]),
+    kind=st.sampled_from([READ, MUT, COST]),
+)
+def test_plan_bounds_and_plan_first(lengths, mode, kind):
+    from pydantic import ValidationError
+
+    from backend.agent.tools_core import SubmitPlanArgs
+
+    steps = ["x" * length for length in lengths]
+    if 1 <= len(steps) <= 10 and all(1 <= length <= 200 for length in lengths):
+        assert SubmitPlanArgs(steps=steps).steps == steps
+    else:
+        with pytest.raises(ValidationError):
+            SubmitPlanArgs(steps=steps)
+    assert gate(_inp(_spec(kind), mode, plan_accepted=False)).action == REF

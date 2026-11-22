@@ -8,10 +8,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from backend.agent.limits import LimitName
 from backend.errors import AuthorizationError, ConflictError, FeatureDisabledError, ValidationError
 from ml_engine.contracts.agent import Mode, SessionStatus, TranscriptEntry
+from tests.agent.strategies import SETTINGS
 from tests.agent.test_service import ALICE, BOB, T0, _service
 from tests.support.agent_fakes import FakeClock
 
@@ -96,15 +99,18 @@ def test_set_mode_non_owner_refused():
 # ------------------------------------------------------------------ continue_after_limit
 
 
-def test_raise_changes_only_the_named_limit_and_resumes():
+# Feature: ml-assistant, Property 24: Limits change only by validated user action
+@settings(**SETTINGS)
+@given(limit=st.sampled_from(list(LimitName)), amount=st.integers(1, 120))
+def test_raise_changes_only_the_named_limit_and_resumes(limit, amount):
     service, _, runner, sid = _session()
-    _stop_at(service, sid, LimitName.TURNS.value)
+    _stop_at(service, sid, limit.value)
     before = service.store.load(sid).session
     kicks = len(runner.kicked)
-    view = service.continue_after_limit(ALICE, sid, LimitName.TURNS, 5)
+    view = service.continue_after_limit(ALICE, sid, limit, amount)
     s = service.store.load(sid).session
     expected = before.limits.model_dump()
-    expected["max_converse_turns"] += 5
+    expected[limit.value] += amount
     assert s.limits.model_dump() == expected
     assert view.status is SessionStatus.RUNNING
     assert len(runner.kicked) == kicks + 1 and runner.kicked[-1] == sid
@@ -151,3 +157,21 @@ def test_continue_non_owner_refused():
     with pytest.raises(AuthorizationError):
         service.continue_after_limit(BOB, sid, LimitName.TURNS, 5)
     assert service.store.load(sid).session == before
+
+
+# Feature: ml-assistant, Property 20: Autopilot enablement and switching
+@settings(**SETTINGS)
+@given(allowed=st.booleans(), budget=st.integers(1, 20), spend=st.integers(-1, 21))
+def test_autopilot_grant_within_budget(allowed, budget, spend):
+    service, _, _, sid = _session(agent_autopilot_allowed=allowed)
+    with service.store.transaction(sid) as session:
+        session.limits.max_estimated_spend_usd = budget
+    before = service.store.load(sid).session
+    if allowed and 0 < spend <= budget:
+        service.set_mode(ALICE, sid, Mode.AUTOPILOT, max_estimated_spend_usd=spend)
+        assert service.store.load(sid).session.autopilot.enabled_by == ALICE.user
+        assert service.set_mode(ALICE, sid, Mode.SUPERVISED).mode is Mode.SUPERVISED
+    else:
+        with pytest.raises((ValidationError, FeatureDisabledError)):
+            service.set_mode(ALICE, sid, Mode.AUTOPILOT, max_estimated_spend_usd=spend)
+        assert service.store.load(sid).session == before

@@ -11,6 +11,8 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent.converse import TextBlock
@@ -38,6 +40,7 @@ from ml_engine.contracts.agent import (
 )
 from ml_engine.contracts.execution import ExecutionRecord, WorkflowKind
 from ml_engine.io import ExperimentLayout, write_model
+from tests.agent.strategies import SETTINGS
 from tests.support.agent_fakes import FakeClock
 from tests.support.in_memory_store import InMemoryObjectStore
 from tests.support.scripted_converse import (
@@ -158,12 +161,14 @@ def _extract(data: dict) -> list[AwaitedJobSpec]:
 
 
 class Harness:
-    def __init__(self, turns, *, mode=Mode.AUTOPILOT, job_ids=("exec-1",), timeout=30.0) -> None:
+    def __init__(
+        self, turns, *, mode=Mode.AUTOPILOT, job_ids=("exec-1",), timeout=30.0, existing_objects=None
+    ) -> None:
         self.calls = 0
         self.job_ids = list(job_ids)
         self.crash = False
         self.submit_on_crash = False
-        self.objects = InMemoryObjectStore()
+        self.objects = existing_objects if existing_objects is not None else InMemoryObjectStore()
         self.clock = FakeClock(T0)
         self.analysis = _Analysis()
         self.repository = _Repository()
@@ -189,7 +194,8 @@ class Harness:
             job_extractor=_extract,
         )
         self.store = SessionStore(self.objects, ROOT, clock=self.clock)
-        self.store.create(_session(mode))
+        if existing_objects is None:
+            self.store.create(_session(mode))
         inputs = ToolInputs(audit=_Audit(), authorizer=_Authorizer(), allowed_instance_types=[])
         self.converse = ScriptedFakeConverseClient(steps=[ScriptStep(t) for t in turns])
         self.watcher = AgentJobWatcher(self.store, self.analysis, clock=self.clock)
@@ -335,19 +341,27 @@ def _crash_after_approval(h: Harness) -> None:
     assert _call(h.session, "tu-t").state is CallState.EXECUTING
 
 
-def test_crash_during_costly_call_adopts_exactly_one_execution_and_never_resubmits():
+# Feature: ml-assistant, Property 4: Restart equivalence and exactly-once submission
+@settings(**SETTINGS)
+@given(age=st.integers(1, 86400), replays=st.integers(1, 4))
+def test_crash_during_costly_call_adopts_exactly_one_execution_and_never_resubmits(age, replays):
     h = Harness([tool_turn(PLAN), tool_turn(TRAIN)], mode=Mode.SUPERVISED)
-    h.write_execution("exec-old", T0 - timedelta(hours=1))  # started before the marker
+    h.write_execution("exec-old", T0 - timedelta(seconds=age))  # started before the marker
     h.write_execution("exec-eda", T0 + timedelta(seconds=2), WorkflowKind.EDA)  # other kind
     h.submit_on_crash = True
     _crash_after_approval(h)
 
-    s = h.run()  # the restarted process recovers the call
+    for _ in range(replays):
+        restarted = Harness([], existing_objects=h.objects)
+        s = restarted.run()
+        assert restarted.calls == restarted.converse.calls == 0
     assert h.calls == 1  # never executed again
     record = _call(s, "tu-t")
     assert record.state is CallState.SUCCEEDED
     assert [j.execution_id for j in s.awaited_jobs] == ["exec-new"]
-    assert next(a for a in s.approvals if a.tool_call_id == "tu-t").status is ApprovalStatus.EXECUTED
+    assert (
+        next(a for a in s.approvals if a.tool_call_id == "tu-t").status is ApprovalStatus.EXECUTED
+    )
     assert s.counters.costly_tool_calls == 1  # not counted again
     assert s.status is SessionStatus.WAITING_FOR_JOB
     assert h.converse.calls == 2
@@ -379,3 +393,45 @@ def test_slow_platform_query_gives_unknown_outcome():
     assert h.calls == 1
     record = _call(s, "tu-t")
     assert (record.state, record.error_code) == (CallState.UNKNOWN_OUTCOME, "UNKNOWN_OUTCOME")
+
+
+# Feature: ml-assistant, Property 27: Waiting holds nothing open, and job results are delivered
+@settings(**SETTINGS)
+@given(
+    states=st.lists(
+        st.sampled_from(["SUCCEEDED", "FAILED", "STOPPED", None]), min_size=1, max_size=5
+    )
+)
+def test_partial_job_completion_waits_for_the_last_job(states):
+    ids = [f"exec-{i}" for i in range(len(states))]
+    h = Harness([tool_turn(PLAN), tool_turn(TRAIN), text_turn("Done.")], job_ids=ids)
+    h.run()
+    for i, (job, state) in enumerate(zip(ids, states, strict=True)):
+        h.analysis.states[job] = (state, "bad job" if state == "FAILED" else None)
+        h.watcher.sweep_jobs()
+        assert h.session.jobs_ready == (i + 1 == len(states))
+        assert h.converse.calls == 2
+    h.service.resume(ALICE, SID)
+    h.run()
+    updates = [u["data"] for u in _job_updates(h.converse.requests[-1])]
+    assert [(u["execution_id"], u["state"]) for u in updates] == [
+        (job, state.lower() if state else "not_found")
+        for job, state in zip(ids, states, strict=True)
+    ]
+
+
+# Feature: ml-assistant, Property 11: One result per request, in request order
+@settings(**SETTINGS)
+@given(requests=st.integers(2, 3))
+def test_unfinished_job_refuses_later_submissions_in_order(requests):
+    from backend.agent.loop import CODE_JOB_PENDING
+
+    calls = [(f"train-{i}", "start_training", {"experiment_id": EXP}) for i in range(requests)]
+    h = Harness([tool_turn(PLAN), tool_turn(*calls)])
+    s = h.run()
+    assert s.status is SessionStatus.WAITING_FOR_JOB and h.calls == 1
+    assert [e.tool_call_id for e in s.transcript if e.kind == "tool_result"] == [
+        PLAN[0],
+        *[cid for cid, _, _ in calls],
+    ]
+    assert [_call(s, cid).error_code for cid, _, _ in calls[1:]] == [CODE_JOB_PENDING] * (requests-1)

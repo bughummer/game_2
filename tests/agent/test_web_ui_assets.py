@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from backend.api import static
 from backend.api.routes import agent as agent_routes
 
 UI = Path(__file__).resolve().parents[2] / "backend" / "api" / "ui"
@@ -41,3 +42,15 @@ def test_only_defined_agent_routes_are_called():
     }
     assert called, "assistant.js calls no /agent/ route"
     assert called <= defined, sorted(called - defined)
+
+
+def test_assistant_assets_are_in_the_served_allow_list():
+    assert static._ASSETS["assistant.js"] == "text/javascript; charset=utf-8"
+    assert static._ASSETS["assistant.css"] == "text/css; charset=utf-8"
+    assert "secret.txt" not in static._ASSETS
+
+
+def test_index_loads_assistant_assets_after_the_base_assets():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert html.index("/ui/styles.css") < html.index("/ui/assistant.css")
+    assert html.index("/ui/app.js") < html.index("/ui/assistant.js")

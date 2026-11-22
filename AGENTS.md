@@ -70,46 +70,26 @@ Full spec: `.kiro/specs/ml-assistant/requirements.md`, `design.md`, `tasks.md`.
 | `tests/agent/` | Agent tests |
 | `infra/server/` | systemd unit and `ml-factory.env.example` (the deployment settings) |
 
-## Status (as of 2026-11-20)
+## Status (as of 2026-11-21)
 
-Done: contracts, settings, Converse client, session store, tool registry and full catalogue,
-loop with approvals, Autopilot, limits, cost estimates, job waiting and crash recovery, cancel,
-narration grounding, audit trail, local uploads, API routes, smoke harness, CLI file listing and
-rendering. Offline suite was green (about 1,960 tests) before the last step.
+The required ML Assistant implementation is complete: agent service, API, `mlf` CLI and web
+chat. The session-store corrupt-record fix is in place. The inherited manifest is current.
+The optional ML Assistant coverage is implemented in the offline suite. The task list links
+each item to its tests. The full offline suite and `ruff check .` pass. The local test environment uses scikit-learn
+1.9.0 because the byte-for-byte golden fixture records that version.
 
 **Never run against real AWS.** Whether the Bedrock model supports tool use, whether IAM allows
 everything, and whether a real model follows the system prompt are all unverified.
 
-## To-do, in order
+## To-do
 
-1. **Fix the failing test** `tests/agent/test_contracts_store.py::test_corrupt_record_is_rejected_untouched`.
-   A stored session of `{"":""}` is reported as `unknown_contract_version` instead of
-   `corrupt_content`. Root cause is in `backend/agent/store.py` (`load` / `_embedded_versions`):
-   a record with no `schema_version` is not a valid session and should be treated as corrupt.
-2. **CLI** (tasks 16.2, 16.4, 16.5): `ml_factory_cli/transport.py` (HTTP and in-process),
-   `ml_factory_cli/__main__.py` (the `mlf` command: create, resume, approve/reject/edit, mode,
-   cancel, audit, watch; exit 75 when an approval is pending on a non-TTY), and the
-   `mlf` entry point in `pyproject.toml`. `local_files.py` and `render.py` already exist.
-3. **Checkpoints 13 and 15**: run the full suite.
-4. **Real-AWS smoke test** (costs at most 5 USD). In cmd, from `ml_factory_2`, with AWS
-   credentials set:
-   ```
-   set ML_FACTORY_AWS_TESTS=1
-   set ML_FACTORY_AGENT_SMOKE=1
-   .venv\Scripts\python -m scripts.agent_smoke
-   ```
-5. **Web chat** (tasks 17.1, 17.2): `backend/api/ui/assistant.js` and `assistant.css`, registered
-   in `backend/api/static.py` and `index.html`. Render untrusted text with `textContent`, never
-   `innerHTML`.
-6. **Final** (task 18): re-record the inherited manifest, run the full suite.
-7. **Optional**: about 45 property and example tests marked `*` in `tasks.md`.
+- **Do not run the real-AWS smoke test.** Model tool-use support, IAM permissions and behavior
+  against a real model remain unverified. The owner's no-real-AWS instruction above applies.
 
 Known gaps to keep in mind:
 - `scripts/agent_smoke.py` calls the private `AgentService._stop_jobs` to stop jobs without
   cancelling; a public method would be cleaner.
 - `RowCounter` reads the private `DatasetService._s3`.
-- The scheduler in `tasks.md` treats optional tests as blocking in some tools; queue them or
-  skip them explicitly.
 
 ## Running things
 

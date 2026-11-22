@@ -254,7 +254,9 @@ def build_mcp_server(container: AppContainer, *, name: str = "ml-factory") -> Fa
 
     @mcp.tool(description="Soft-delete an experiment (artifacts are retained). Mutation.")
     @_safe
-    def delete_experiment(experiment_id: str, user: str | None = None) -> dict[str, str]:
+    def delete_experiment(
+        experiment_id: str, user: str | None = None
+    ) -> dict[str, str | list[str]]:
         who = principal(user)
         authorizer.require_owner(who, experiment_id)
         record(experiment_id, "delete_experiment", who.user)

@@ -193,3 +193,22 @@ def test_get_eda_summary_has_no_values_or_uris(classification_eda):
     assert "customer provided" not in text  # free-text values never appear
     assert out.data["dataset"]["row_count"] == classification_eda.dataset.row_count
     assert len(out.data["columns"]) == len(classification_eda.columns)
+
+
+def test_catalogue_covers_required_ml_capabilities():
+    registry = catalogue.build_registry(None)
+    assert {
+        "request_local_upload",
+        "create_experiment",
+        "get_eda_summary",
+        "decide_features",
+        "propose_features",
+        "get_leakage_findings",
+        "start_training",
+        "get_execution_status",
+        "get_comparison",
+        "start_validation",
+        "draft_free_form_script",
+        "list_model_versions",
+        "get_report",
+    } <= set(registry.names())

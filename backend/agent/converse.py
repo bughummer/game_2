@@ -27,7 +27,9 @@ TRANSIENT_CODES = frozenset(
         "ModelNotReadyException",
     }
 )
-CREDENTIAL_CODES = frozenset({"ExpiredTokenException", "ExpiredToken", "UnrecognizedClientException"})
+CREDENTIAL_CODES = frozenset(
+    {"ExpiredTokenException", "ExpiredToken", "UnrecognizedClientException"}
+)
 # botocore exception class names for timeouts and connection failures (matched by name so that
 # botocore is not imported at module level).
 TRANSIENT_CLASS_NAMES = frozenset(
@@ -265,7 +267,9 @@ def _looks_unsupported(message: str) -> bool:
     text = message.lower()
     if "toolconfig" in text:
         return True
-    return "tool" in text and ("not support" in text or "doesn't support" in text or "unsupported" in text)
+    return "tool" in text and (
+        "not support" in text or "doesn't support" in text or "unsupported" in text
+    )
 
 
 def classify_error(exc: BaseException, model_id: str) -> ConverseError:
@@ -352,7 +356,7 @@ class BedrockConverseClient:
                 return parse_response(response, self.model_id)
             except ConverseError:
                 raise
-            except Exception as exc:  # noqa: BLE001 - classified, then re-raised sanitised
+            except Exception as exc:  # classified, then re-raised sanitised
                 error = classify_error(exc, self.model_id)
                 LOGGER.warning(
                     "Converse call failed: %s model=%s code=%s",

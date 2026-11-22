@@ -258,8 +258,13 @@ async def test_a_user_defined_feature_goes_from_chat_to_training(inline_mcp, dat
         assert defined["approved_names"] == ["charges_per_tenure"]
         assert [r["reason"] for r in defined["rejected"]] == ["target_reference"]
 
+        args = {"experiment_id": experiment_id}
+        proposals = (await client.call_tool("get_feature_proposals", args)).data
+        assert proposals["approved_names"] == defined["approved_names"]
+        approved = (await client.call_tool("approve_features", {**args, "approved_names": defined["approved_names"]})).data
+        assert approved["approved_names"] == defined["approved_names"]
         review = (
-            await client.call_tool("get_feature_review", {"experiment_id": experiment_id})
+            await client.call_tool("get_feature_review", args)
         ).data
         row = next(f for f in review["features"] if f["feature"] == "charges_per_tenure")
         assert row["origin"] == "derived" and row["selected"] is True
@@ -528,6 +533,7 @@ async def test_post_training_analysis_through_the_tools(
             )
         ).data
         assert scoring["status"] == "completed" and scoring["row_count"] == 10
+        assert (await client.call_tool("get_batch_scoring", {"experiment_id": experiment_id})).data == scoring
         link = (
             await client.call_tool(
                 "get_download_link",
@@ -572,3 +578,83 @@ async def test_execution_status_and_stop_through_the_tools(mcp, container, datas
         assert status["jobs"][0]["stage"] == "profiling"
         with pytest.raises(ToolError, match="No training is running"):
             await client.call_tool("stop_training", {"experiment_id": experiment_id})
+
+
+@pytest.mark.anyio
+async def test_pre_agent_surface_matches_baseline(mcp, dataset_uri, surface_baseline):
+    from backend.api.app import _collect_routes
+
+    baseline = surface_baseline
+    assert baseline["result_keys"].keys() == baseline["parameters"].keys()
+    assert (
+        sorted(
+            f"{method} {path}"
+            for method, path, _ in _collect_routes()
+            if not path.startswith("/agent/")
+        )
+        == baseline["routes"]
+    )
+    arguments = {
+        "list_experiments": {},
+        "list_datasets": {},
+        "register_dataset": {"dataset_uri": dataset_uri},
+        "request_dataset_upload": {"filename": "training.csv"},
+    }
+    async with Client(mcp) as client:
+        tools = await client.list_tools()
+        assert {
+            tool.name: [
+                key if key in tool.inputSchema.get("required", []) else key + "?"
+                for key in tool.inputSchema["properties"]
+            ]
+            for tool in tools
+        } == baseline["parameters"]
+        for tool, args in arguments.items():
+            await client.call_tool(tool, args)
+
+
+@pytest.mark.anyio
+async def test_existing_tool_response_contracts(
+    inline_mcp, inline_container, dataset_uri, monkeypatch
+):
+    from datetime import UTC, datetime
+
+    from ml_engine.contracts.proposals import FeatureProposalReport
+    from ml_engine.contracts.reasoning import ReasoningReport
+
+    async with Client(inline_mcp) as client:
+        created = (
+            await client.call_tool(
+                "create_experiment",
+                {
+                    "name": "contracts",
+                    "dataset_uri": dataset_uri,
+                    "target_column": "churned",
+                },
+            )
+        ).data
+        eid = created["experiment_id"]
+        args = {"experiment_id": eid}
+        assert (await client.call_tool("get_experiment", args)).data == created
+        for name in ("get_leakage_findings", "get_training_status"):
+            assert (await client.call_tool(name, args)).data["experiment_id"] == eid
+        assert (await client.call_tool("resolve_stage_image", {})).data["source"] == "config"
+
+        # Supply the model-generated artifacts at the service boundary. The real MCP
+        # wrappers still serialize the contracts, resolve identity, and write the audits.
+        now = datetime.now(UTC)
+        proposals = FeatureProposalReport(experiment_id=eid, generated_at=now)
+        reasoning = ReasoningReport(
+            experiment_id=eid, generated_at=now, model_id="offline", executive_summary="Checked."
+        )
+        monkeypatch.setattr(inline_container.proposals, "generate", lambda *a, **kw: proposals)
+        monkeypatch.setattr(inline_container.reasoning, "interpret", lambda *a, **kw: reasoning)
+        for name, report in (
+            ("propose_features_tool", proposals),
+            ("interpret_results", reasoning),
+        ):
+            result = await client.call_tool(name, args)
+            assert result.data == report.model_dump(mode="json")
+        monkeypatch.setattr(inline_container.experiments, "stop_training", lambda eid: "execution")
+        assert (await client.call_tool("stop_training", args)).data["execution_id"] == "execution"
+        assert (await client.call_tool("delete_experiment", args)).data["status"] == "deleted"

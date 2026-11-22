@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent import tools_free_form
@@ -36,6 +38,7 @@ from ml_engine.contracts.agent import (
 )
 from ml_engine.contracts.free_form import content_hash
 from ml_engine.reasoning.numbers import drop_unverified_numbers
+from tests.agent.strategies import SETTINGS
 from tests.support.agent_fakes import FakeClock
 from tests.support.in_memory_store import InMemoryObjectStore
 from tests.support.scripted_converse import (
@@ -118,22 +121,37 @@ def test_attributions_carry_call_id_and_path_and_free_form_label_beside_number()
     assert by_value["0.91"].path == "auc" and by_value["0.91"].metric_label is None
 
 
-def test_verbatim_block_deep_equals_stored_full_result():
-    full = {"rows_omitted": 0, "table": [{"model": "xgb", "auc": 0.9, "nested": {"a": [1, 2]}}]}
+# Feature: ml-assistant, Property 41: A final answer carries attributions, labels and verbatim blocks
+@settings(**SETTINGS)
+@given(values=st.lists(st.integers(1, 1000), min_size=1, max_size=20))
+def test_verbatim_block_deep_equals_stored_full_result(values):
+    full = {"rows_omitted": 0, "table": [{"model": "xgb", "auc": 0.9, "nested": {"a": values}}]}
     result = ToolResult("tu-c", "get_report", 3, full, verbatim=True)
-    answer = build_final_answer(verify_narration("Here is the report.", NumberLedger()), [result])
+    answer = build_final_answer(
+        verify_narration(f"Value {values[0]}.", _ledger_of(full, "tu-c")), [result]
+    )
+    assert any(
+        a.tool_call_id == "tu-c" and a.path == "table[0].nested.a[0]"
+        for a in answer.sentences[0].attributions
+    )
     assert [b.content for b in answer.verbatim] == [full]
     assert answer.verbatim[0].tool_call_id == "tu-c"
     assert answer.verbatim[0].content is not full  # a copy, not the caller's object
 
 
-def test_not_comparable_note_and_ranking_sentence_dropped():
+# Feature: ml-assistant, Property 42: Comparisons and advisory results are described honestly
+@settings(**SETTINGS)
+@given(
+    verb=st.sampled_from(["is better than", "beats", "outperforms", "ranks higher than"]),
+    run=st.from_regex(r"trial-[a-z]{2,8}", fullmatch=True),
+)
+def test_not_comparable_note_and_ranking_sentence_dropped(verb, run):
     full = {
         "entries": [
             {"name": "xgb", "primary_score": 0.9, "metric_label": "engine", "comparable": True},
             {
-                "name": "ff-1:auc",
-                "run_id": "ff-1",
+                "name": run + ":auc",
+                "run_id": run,
                 "value": 0.95,
                 "metric_label": "self_reported",
                 "comparable": False,
@@ -141,18 +159,24 @@ def test_not_comparable_note_and_ranking_sentence_dropped():
         ]
     }
     ledger = _ledger_of(full, "tu-cmp")
-    text = "ff-1 is better than xgb. Both runs finished."
+    text = f"{run} {verb} xgb. Both runs finished."
     result = ToolResult("tu-cmp", "compare_free_form", 4, full, verbatim=True, advisory=True)
     answer = build_final_answer(verify_narration(text, ledger), [result])
     assert [s.text for s in answer.sentences] == ["Both runs finished."]
-    assert any("ff-1:auc" in n and "not comparable" in n for n in answer.notes)
+    assert any(run + ":auc" in n and "not comparable" in n for n in answer.notes)
     assert answer.labels == [ADVISORY_LABEL]
 
 
-def test_advisory_label_and_overclaim():
+# Feature: ml-assistant, Property 42: Comparisons and advisory results are described honestly
+@settings(**SETTINGS)
+@given(
+    certainty=st.sampled_from(["guaranteed", "certain", "proven", "definitely"]),
+    column=st.from_regex(r"[a-z]{1,8}", fullmatch=True),
+)
+def test_advisory_label_and_overclaim(certainty, column):
     full = {"findings": [{"column": "refund_flag", "risk": 0.9}]}
     result = ToolResult("tu-l", "get_leakage_findings", 2, full, advisory=True)
-    text = "The leakage in refund_flag is guaranteed. Leakage risk is high."
+    text = f"The leakage in {column} is {certainty}. Leakage risk is high."
     answer = build_final_answer(verify_narration(text, _ledger_of(full, "tu-l")), [result])
     assert answer.labels == [ADVISORY_LABEL]
     assert [s.status for s in answer.sentences] == ["overclaim", "verified"]
@@ -340,3 +364,17 @@ def test_free_form_approval_fails_closed_when_code_cannot_be_loaded():
     assert record.error_code == "APPROVAL_VIEW_FAILED"
     assert s.approvals == []
     assert not free_form.started
+
+
+# Feature: ml-assistant, Property 40: Narration is verified against the ledger
+@settings(**SETTINGS)
+@given(value=st.integers(1, 10000), delta=st.integers(-1, 1), percent=st.booleans())
+def test_numbers_match_at_displayed_precision(value, delta, percent):
+    displayed = value + delta
+    text = f"Measured {displayed}{'%' if percent else ''}."
+    raw = {"metric": value / 100 if percent else value}
+    verified = drop_unverified_numbers(text, raw) == text
+    answer = build_final_answer(verify_narration(text, _ledger_of(raw)))
+    sentence = answer.sentences[0]
+    assert (sentence.status == "verified") == verified
+    assert sentence.text == (text if verified else UNVERIFIED_MARKER + text)

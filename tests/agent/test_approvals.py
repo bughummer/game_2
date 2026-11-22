@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from backend.errors import AuthorizationError, ConflictError, ValidationError
 from ml_engine.contracts.agent import (
@@ -20,6 +22,7 @@ from ml_engine.contracts.agent import (
     ToolClass,
     args_hash,
 )
+from tests.agent.strategies import SETTINGS, credentials
 from tests.agent.test_service import ALICE, BOB, T0, _service
 
 LIST = ("tu-1", "list_datasets", {"limit": 10})
@@ -135,9 +138,12 @@ def test_invalid_edit_names_arguments_and_leaves_request_unchanged():
     assert len(runner.kicked) == kicks
 
 
-def test_valid_edit_needs_approval_of_the_edited_hash():
+# Feature: ml-assistant, Property 15: Edits are validated and confirmed before they run
+@settings(**SETTINGS)
+@given(limit=st.integers(11, 50))
+def test_valid_edit_needs_approval_of_the_edited_hash(limit):
     service, runner, sid = _approval_session(LIST)
-    edited = {"limit": 20}
+    edited = {"limit": limit}
     h_edit = args_hash("list_datasets", edited)
     kicks = len(runner.kicked)
     view = service.decide_approval(
@@ -265,3 +271,112 @@ def test_edit_recomputes_the_review_or_is_refused_when_the_view_fails():
         )
     assert failed.value.details["reason"] == "invalid_edit"
     assert service.store.load(sid).session.approvals == before
+
+
+# Feature: ml-assistant, Property 16: Rejection and expiry never execute
+@settings(**SETTINGS)
+@given(ttl=st.integers(60, 86400), offset=st.integers(-2, 2))
+def test_expiry_boundary(ttl, offset):
+    service, _, sid = _approval_session(LIST)
+    with service.store.transaction(sid) as s:
+        s.approvals[0].expires_at = T0 + timedelta(seconds=ttl)
+    service._clock.advance(ttl + offset)
+    if offset <= 0:
+        service.decide_approval(ALICE, sid, "ap-tu-1", "approve", args_hash=H_LIST)
+        assert service.store.load(sid).session.approvals[0].status is ApprovalStatus.APPROVED
+    else:
+        with pytest.raises(ConflictError):
+            service.decide_approval(ALICE, sid, "ap-tu-1", "approve", args_hash=H_LIST)
+        assert service.store.load(sid).session.approvals[0].status is ApprovalStatus.EXPIRED
+
+
+# Feature: ml-assistant, Property 17: Batch approval only covers what was displayed
+@settings(**SETTINGS)
+@given(matches=st.lists(st.booleans(), min_size=1, max_size=10))
+def test_only_displayed_batch_hashes_are_approved(matches):
+    calls = [(f"c{i}", "list_datasets", {"limit": i + 1}) for i in range(len(matches))]
+    service, _, sid = _approval_session(*calls)
+    items = [
+        {"approval_id": f"ap-{cid}", "args_hash": args_hash(tool, args) if match else "stale"}
+        for (cid, tool, args), match in zip(calls, matches, strict=True)
+    ]
+    service.decide_batch(ALICE, sid, items)
+    statuses = [a.status for a in service.store.load(sid).session.approvals]
+    assert statuses == [ApprovalStatus.APPROVED if m else ApprovalStatus.PENDING for m in matches]
+
+
+# Feature: ml-assistant, Property 18: Ownership isolation
+@settings(**SETTINGS)
+@given(
+    user=st.from_regex(r"other-[a-z]{1,10}", fullmatch=True),
+    operation=st.sampled_from(
+        ["get", "list", "resume", "message", "approve", "mode", "cancel", "audit"]
+    ),
+)
+def test_foreign_identity_cannot_access_or_change_session(user, operation):
+    from backend.auth import Principal
+
+    service, _, sid = _approval_session(LIST)
+    before = service.store.load(sid).session.model_dump_json()
+    principal = Principal(user=user)
+    actions = {
+        "get": lambda: service.get_session(principal, sid),
+        "resume": lambda: service.resume(principal, sid),
+        "message": lambda: service.send_message(principal, sid, "hello"),
+        "approve": lambda: service.decide_approval(
+            principal, sid, "ap-tu-1", "approve", args_hash=H_LIST
+        ),
+        "mode": lambda: service.set_mode(principal, sid, "supervised"),
+        "cancel": lambda: service.cancel(principal, sid),
+        "audit": lambda: service.audit_trail(principal, sid),
+    }
+    if operation == "list":
+        assert not service.list_sessions(principal).items
+    else:
+        with pytest.raises(AuthorizationError):
+            actions[operation]()
+    assert service.store.load(sid).session.model_dump_json() == before
+
+
+# Feature: ml-assistant, Property 14: The approved call is exactly the shown call, run at most once
+@settings(**SETTINGS)
+@given(left=st.integers(), right=st.integers(), session=st.uuids(), approval=st.uuids())
+def test_hash_and_replay_key_bind_all_inputs(left, right, session, approval):
+    from ml_engine.contracts.agent import idempotency_key
+
+    arguments = {"left": left, "right": right}
+    digest = args_hash("train", arguments)
+    changed = args_hash("train", {**arguments, "right": right + 1})
+    assert digest == args_hash("train", dict(reversed(arguments.items())))
+    assert digest != changed and digest != args_hash("evaluate", arguments)
+    sid, aid = str(session), str(approval)
+    key = idempotency_key(sid, aid, digest)
+    assert key == idempotency_key(sid, aid, digest)
+    assert (
+        len(
+            {
+                key,
+                idempotency_key(sid + "2", aid, digest),
+                idempotency_key(sid, aid + "2", digest),
+                idempotency_key(sid, aid, changed),
+            }
+        )
+        == 4
+    )
+
+
+# Feature: ml-assistant, Property 38: Credentials stay out of session messages and decisions
+@settings(**SETTINGS)
+@given(secret=credentials)
+def test_sensitive_user_text_is_scrubbed_before_storage(secret):
+    from tests.agent.test_service import ASK, PLAN
+    from tests.support.scripted_converse import text_turn, tool_turn
+
+    service, _, client, _ = _service([tool_turn(PLAN, ASK), text_turn("Finished.")])
+    sid = service.create_session(ALICE, "Analyze " + secret).session_id
+    service.send_message(ALICE, sid, "Continue " + secret)
+    assert secret not in repr(client.requests)
+    assert secret not in service.store.load(sid).session.model_dump_json()
+    service, _, sid = _approval_session(LIST)
+    service.decide_approval(ALICE, sid, "ap-tu-1", "reject", args_hash=H_LIST, reason=secret)
+    assert secret not in service.store.load(sid).session.model_dump_json()

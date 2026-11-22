@@ -20,6 +20,8 @@ UI_DIR = Path(__file__).resolve().parent / "ui"
 _ASSETS: dict[str, str] = {
     "app.js": "text/javascript; charset=utf-8",
     "styles.css": "text/css; charset=utf-8",
+    "assistant.js": "text/javascript; charset=utf-8",
+    "assistant.css": "text/css; charset=utf-8",
 }
 
 

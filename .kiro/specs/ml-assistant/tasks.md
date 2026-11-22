@@ -90,7 +90,7 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
 - [x] 3. Checkpoint - Contracts, settings and Converse client
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Session store, tool registry and minimal loop
+- [x] 4. Session store, tool registry and minimal loop
   - [x] 4.1 Add audit writing in `backend/audit.py` and `backend/agent/audit.py`
     - Add `AuditWriteError` and `AuditLog.write(...)` to `backend/audit.py`. It returns the object URI and raises on failure, and returns `None` when auditing is disabled. `record` stays unchanged.
     - Implement `AgentAudit.write(session, rec)`: convert an `AgentAuditRecord` to an `AuditEvent` with action `agent.<event_type>`, plus the reverse conversion.
@@ -120,7 +120,7 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - **Property 2: Unsupported or corrupt records are rejected untouched**
     - **Validates: Requirements 14.8, 15.2**
 
-  - [ ]* 4.6 Write property test for session listing
+  - [x]* 4.6 Write property test for session listing
     - File: `tests/agent/test_contracts_store.py`
     - **Property 28: Session listing**
     - **Validates: Requirements 6.8**
@@ -198,18 +198,18 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - Remove the now-redundant `client.model_id = settings.effective_agent_model_id` line in `backend/agent/wiring.py`, because `BedrockConverseClient.from_settings` now uses `effective_agent_model_id`.
     - _Requirements: 15.7, 15.8, 13.7_
 
-  - [ ]* 4.17 Write property test for goal validation
+  - [x]* 4.17 Write property test for goal validation
     - File: `tests/agent/test_intake.py`
     - **Property 5: Goal validation**
     - **Validates: Requirements 1.1, 1.2**
 
-  - [ ]* 4.18 Write property test for plan validity and plan-first
-    - File: `tests/agent/test_intake.py`
+  - [x]* 4.18 Write property test for plan validity and plan-first
+    - File: `tests/agent/test_policy_rules.py`
     - **Property 6: Plan validity and plan first**
     - **Validates: Requirements 1.3**
 
-  - [ ]* 4.19 Write property test for the clarifying-question deferral
-    - File: `tests/agent/test_intake.py`
+  - [x]* 4.19 Write property test for the clarifying-question deferral
+    - File: `tests/agent/test_loop.py`
     - **Property 7: A clarifying question defers every side effect in its turn**
     - **Validates: Requirements 1.5**
 
@@ -223,13 +223,13 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - **Property 9: Calls that cannot validate never execute**
     - **Validates: Requirements 2.3, 2.4, 2.5, 3.10**
 
-  - [ ]* 4.22 Write property test for unapproved inputs
-    - File: `tests/agent/test_registry_inputs.py`
+  - [x]* 4.22 Write property test for unapproved inputs
+    - File: `tests/agent/test_execute.py`
     - **Property 10: Unapproved inputs never execute**
     - **Validates: Requirements 3.4, 7.3, 8.10**
 
-  - [ ]* 4.23 Write property test for service failures
-    - File: `tests/agent/test_registry_inputs.py`
+  - [x]* 4.23 Write property test for service failures
+    - File: `tests/agent/test_execute.py`
     - **Property 12: Service failures become structured errors**
     - **Validates: Requirements 3.9, 14.4**
 
@@ -243,27 +243,27 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - **Property 36: Untrusted strings are truncated and marked**
     - **Validates: Requirements 8.8**
 
-  - [ ]* 4.26 Write property test for the envelope and size cap
+  - [x]* 4.26 Write property test for the envelope and size cap
     - File: `tests/agent/test_results_pipeline.py`
     - **Property 37: Every result sent to the model is enveloped and within the size cap**
     - **Validates: Requirements 3.8, 8.4**
 
-  - [ ]* 4.27 Write property test for credential and URI scrubbing
-    - File: `tests/agent/test_results_pipeline.py`
+  - [x]* 4.27 Write property test for credential and URI scrubbing
+    - Files: `tests/agent/test_results_pipeline.py`, `tests/agent/test_audit_trail.py`, `tests/agent/test_approvals.py`
     - **Property 38: Credentials, signed URLs and foreign S3 keys never reach the model, the session or an audit record**
     - **Validates: Requirements 8.9, 11.5, 13.9**
 
-  - [ ]* 4.28 Write property test for injection flagging
-    - File: `tests/agent/test_results_pipeline.py`
+  - [x]* 4.28 Write property test for injection flagging
+    - Files: `tests/agent/test_results_pipeline.py`, `tests/agent/test_audit_trail.py`
     - **Property 39: Instruction-like results are flagged and still enveloped**
     - **Validates: Requirements 8.7**
 
-  - [ ]* 4.29 Write property test for persistence retries
-    - File: `tests/agent/test_contracts_store.py`
+  - [x]* 4.29 Write property test for persistence retries
+    - File: `tests/agent/test_loop.py`
     - **Property 3: Persistence is retried exactly as specified**
     - **Validates: Requirements 6.14**
 
-  - [ ]* 4.30 Write example tests for the minimal loop
+  - [x]* 4.30 Write example tests for the minimal loop
     - File: `tests/agent/test_loop_examples.py`
     - Planning failure, Bedrock errors, credentials, unsupported model, question answer, completion, cancel, ownership and the disabled agent are already covered in `tests/agent/test_loop.py` and `tests/agent/test_service.py`.
     - Test only this: `build_container(..., converse_client=fake)` exposes `container.agent` offline, with no network access and no S3 write.
@@ -286,7 +286,7 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - It uses the same code path as the harness.
     - _Requirements: 17.1, 17.2, 17.8_
 
-  - [ ]* 6.3 Write unit tests for the smoke wiring
+  - [x]* 6.3 Write unit tests for the smoke wiring
     - File: `tests/agent/test_smoke_wiring.py`
     - Cover the skip without the flag, the halved limits with spend capped at 5 USD, and the final report formatter output.
     - _Requirements: 17.2, 17.5, 17.9_
@@ -358,83 +358,83 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - Reject `resume` while a lease is held with `session_in_use`.
     - _Requirements: 6.5, 6.6, 6.10, 6.12, 6.13, 14.1_
 
-  - [ ]* 8.9 Write property test for the approval gate
-    - File: `tests/agent/test_policy.py`
+  - [x]* 8.9 Write property test for the approval gate
+    - File: `tests/agent/test_policy_rules.py`
     - **Property 13: Approval gate**
     - **Validates: Requirements 4.2, 4.3, 4.4, 5.7, 7.4**
 
-  - [ ]* 8.10 Write property test for the approved call
-    - File: `tests/agent/test_policy.py`
+  - [x]* 8.10 Write property test for the approved call
+    - Files: `tests/agent/test_loop_gating.py`, `tests/agent/test_approvals.py`, `tests/agent/test_jobs_recovery.py`
     - **Property 14: The approved call is exactly the shown call, run at most once**
     - **Validates: Requirements 4.5, 4.6, 4.9, 14.2, 14.7**
 
-  - [ ]* 8.11 Write property test for edits
-    - File: `tests/agent/test_policy.py`
+  - [x]* 8.11 Write property test for edits
+    - Files: `tests/agent/test_approvals.py`, `tests/agent/test_loop_gating.py`
     - **Property 15: Edits are validated and confirmed before they run**
     - **Validates: Requirements 4.8**
 
-  - [ ]* 8.12 Write property test for rejection and expiry
-    - File: `tests/agent/test_policy.py`
+  - [x]* 8.12 Write property test for rejection and expiry
+    - Files: `tests/agent/test_approvals.py`, `tests/agent/test_loop_gating.py`
     - **Property 16: Rejection and expiry never execute**
     - **Validates: Requirements 4.7, 4.12**
 
-  - [ ]* 8.13 Write property test for batch approval
-    - File: `tests/agent/test_policy.py`
+  - [x]* 8.13 Write property test for batch approval
+    - File: `tests/agent/test_approvals.py`
     - **Property 17: Batch approval only covers what was displayed**
     - **Validates: Requirements 4.13**
 
-  - [ ]* 8.14 Write property test for Autopilot enablement and switching
-    - File: `tests/agent/test_policy.py`
+  - [x]* 8.14 Write property test for Autopilot enablement and switching
+    - Files: `tests/agent/test_modes_limits.py`, `tests/agent/test_loop_gating.py`
     - **Property 20: Autopilot enablement and switching**
     - **Validates: Requirements 5.2, 5.4, 5.9**
 
-  - [ ]* 8.15 Write property test for Autopilot limits
-    - File: `tests/agent/test_policy.py`
+  - [x]* 8.15 Write property test for Autopilot limits
+    - Files: `tests/agent/test_policy_rules.py`, `tests/agent/test_loop_gating.py`
     - **Property 21: Autopilot executes only within every limit**
     - **Validates: Requirements 5.1, 5.5, 5.6, 9.8**
 
-  - [ ]* 8.16 Write property test for the one-result-per-request invariant
-    - File: `tests/agent/test_registry_inputs.py`
+  - [x]* 8.16 Write property test for the one-result-per-request invariant
+    - Files: `tests/agent/test_loop.py`, `tests/agent/test_cancel_jobs.py`, `tests/agent/test_jobs_recovery.py`
     - **Property 11: One result per request, in request order**
     - **Validates: Requirements 1.8, 2.6**
 
-  - [ ]* 8.17 Write property test for exact counters
-    - File: `tests/agent/test_limits.py`
+  - [x]* 8.17 Write property test for exact counters
+    - Files: `tests/agent/test_loop_gating.py`, `tests/agent/test_limits_unit.py`
     - **Property 23: Counters are bounded and exact**
     - **Validates: Requirements 9.2, 9.6, 9.9, 14.3**
 
-  - [ ]* 8.18 Write property test for limit validation and raising
-    - File: `tests/agent/test_limits.py`
+  - [x]* 8.18 Write property test for limit validation and raising
+    - Files: `tests/agent/test_modes_limits.py`, `tests/agent/test_limits_unit.py`
     - **Property 24: Limits change only by validated user action**
     - **Validates: Requirements 9.1, 9.3**
 
-  - [ ]* 8.19 Write property test for repeated calls
-    - File: `tests/agent/test_limits.py`
+  - [x]* 8.19 Write property test for repeated calls
+    - Files: `tests/agent/test_limits_unit.py`, `tests/agent/test_loop_gating.py`
     - **Property 25: Repeated identical calls**
     - **Validates: Requirements 9.4**
 
-  - [ ]* 8.20 Write property test for active time
-    - File: `tests/agent/test_limits.py`
+  - [x]* 8.20 Write property test for active time
+    - File: `tests/agent/test_limits_unit.py`
     - **Property 26: Active time counts only running time**
     - **Validates: Requirements 9.5**
 
-  - [ ]* 8.21 Write property test for restart equivalence
-    - File: `tests/agent/test_loop_recovery.py`
+  - [x]* 8.21 Write property test for restart equivalence
+    - Files: `tests/agent/test_jobs_recovery.py`, `tests/agent/test_loop.py`
     - **Property 4: Restart equivalence and exactly-once submission**
     - **Validates: Requirements 6.2, 14.5**
 
-  - [ ]* 8.22 Write property test for waiting and job delivery
-    - File: `tests/agent/test_loop_recovery.py`
+  - [x]* 8.22 Write property test for waiting and job delivery
+    - File: `tests/agent/test_jobs_recovery.py`
     - **Property 27: Waiting holds nothing open, and job results are delivered**
     - **Validates: Requirements 6.4, 6.5, 6.6, 14.1, 14.11**
 
-  - [ ]* 8.23 Write property test for cancellation
-    - File: `tests/agent/test_loop_recovery.py`
+  - [x]* 8.23 Write property test for cancellation
+    - File: `tests/agent/test_cancel_jobs.py`
     - **Property 30: Cancellation is final**
     - **Validates: Requirements 6.12, 6.13**
 
-  - [ ]* 8.24 Write property test for control-state immunity
-    - File: `tests/agent/test_ownership_control.py`
+  - [x]* 8.24 Write property test for control-state immunity
+    - Files: `tests/agent/test_loop.py`, `tests/agent/test_audit_trail.py`
     - **Property 19: Control state is immune to model output and untrusted content**
     - **Validates: Requirements 4.11, 5.3, 8.5, 8.6, 9.7**
 
@@ -468,16 +468,16 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - If `FreeFormService` has no accessor for a stored draft revision, add the additive method `draft_revision(experiment_id, draft_id, revision)`.
     - _Requirements: 3.1, 3.7, 5.7, 10.5, 10.6, 10.7_
 
-  - [ ]* 10.5 Write example tests for the catalogue and audit parity
-    - File: `tests/agent/test_catalogue_examples.py`
+  - [x]* 10.5 Write example tests for the catalogue and audit parity
+    - Files: `tests/agent/test_catalogue_core.py`, `tests/agent/test_audit_trail.py`, `tests/agent/test_tools_experiments.py`, `tests/agent/test_loop_gating.py`
     - Every capability named in Requirement 3.1 has a tool. No tool is named like delete, promote or approve-script.
     - After a Mutating tool, the experiment audit entry has the same action and detail keys as the matching route, and the agent record's `service_audit_ref` resolves to it.
     - With `audit_log_enabled=false` nothing is written.
     - Cover the Autopilot scenario: a Guard-blocked action is refused and not retried, the loop stops before the spend maximum, and the feature selection is untouched.
     - _Requirements: 3.1, 3.7, 5.6, 5.8, 11.3, 11.8, 16.11_
 
-  - [ ]* 10.6 Write property test for feature exclusion
-    - File: `tests/agent/test_policy.py`
+  - [x]* 10.6 Write property test for feature exclusion
+    - Files: `tests/agent/test_tools_features.py`, `tests/agent/test_loop_gating.py`
     - **Property 22: Features are never excluded without an approved decision**
     - **Validates: Requirements 5.8**
 
@@ -502,33 +502,33 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - Add `AgentService.audit_trail`.
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.6, 11.7, 11.8, 11.9_
 
-  - [ ]* 11.4 Write property test for ledger verification
+  - [x]* 11.4 Write property test for ledger verification
     - File: `tests/agent/test_narration.py`
     - **Property 40: Narration is verified against the ledger**
     - **Validates: Requirements 10.1, 10.2, 10.3**
 
-  - [ ]* 11.5 Write property test for final-answer attributions and verbatim blocks
+  - [x]* 11.5 Write property test for final-answer attributions and verbatim blocks
     - File: `tests/agent/test_narration.py`
     - **Property 41: A final answer carries attributions, labels and verbatim blocks**
     - **Validates: Requirements 10.4, 10.5, 10.7**
 
-  - [ ]* 11.6 Write property test for comparisons and advisory results
+  - [x]* 11.6 Write property test for comparisons and advisory results
     - File: `tests/agent/test_narration.py`
     - **Property 42: Comparisons and advisory results are described honestly**
     - **Validates: Requirements 10.6, 10.8**
 
-  - [ ]* 11.7 Write property test for compaction
-    - File: `tests/agent/test_compaction.py`
+  - [x]* 11.7 Write property test for compaction
+    - File: `tests/agent/test_context_compaction.py`
     - **Property 29: Compaction preserves ids and engine numbers**
     - **Validates: Requirements 6.11**
 
-  - [ ]* 11.8 Write property test for audit completeness and order
-    - File: `tests/agent/test_audit.py`
+  - [x]* 11.8 Write property test for audit completeness and order
+    - File: `tests/agent/test_audit_trail.py`
     - **Property 43: Audit records are complete, ordered and lossless**
     - **Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.6, 11.8**
 
-  - [ ]* 11.9 Write property test for audit failure
-    - File: `tests/agent/test_audit.py`
+  - [x]* 11.9 Write property test for audit failure
+    - File: `tests/agent/test_audit_trail.py`
     - **Property 44: A failed audit write stops further side effects**
     - **Validates: Requirements 11.9**
 
@@ -547,23 +547,23 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - The approval shows the file name, the size and the destination prefix.
     - _Requirements: 7.2, 7.3, 7.4, 7.5, 7.8, 7.9, 7.10, 7.11, 7.12_
 
-  - [ ]* 12.3 Write property test for upload refusal before transfer
-    - File: `tests/agent/test_uploads.py`
+  - [x]* 12.3 Write property test for upload refusal before transfer
+    - Files: `tests/agent/test_uploads_flow.py`, `tests/agent/test_uploads_unit.py`
     - **Property 32: Upload refusal happens before transfer**
     - **Validates: Requirements 7.6, 7.7**
 
-  - [ ]* 12.4 Write property test for duplicate reuse and id stability
-    - File: `tests/agent/test_uploads.py`
+  - [x]* 12.4 Write property test for duplicate reuse and id stability
+    - Files: `tests/agent/test_uploads_unit.py`, `tests/agent/test_uploads_flow.py`
     - **Property 33: Duplicate uploads reuse the dataset, and ids are stable**
     - **Validates: Requirements 7.11, 7.12**
 
-  - [ ]* 12.5 Write property test for failed uploads
-    - File: `tests/agent/test_uploads.py`
+  - [x]* 12.5 Write property test for failed uploads
+    - File: `tests/agent/test_uploads_flow.py`
     - **Property 34: A failed upload leaves nothing behind**
     - **Validates: Requirements 7.10**
 
-  - [ ]* 12.6 Write example tests for uploads
-    - File: `tests/agent/test_uploads_examples.py`
+  - [x]* 12.6 Write example tests for uploads
+    - File: `tests/agent/test_uploads_flow.py`
     - Use a temporary folder with an oversized file, a bad extension, corrupt content and a duplicate upload.
     - Cover the multi-candidate question and the first-upload approval in both modes.
     - _Requirements: 7.4, 7.6, 7.7, 7.8, 7.11, 16.13_
@@ -574,12 +574,12 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - Add the spend-limit stop: on reaching the spend maximum, stop starting jobs, stop running jobs through the same code as `cancel(stop_jobs=True)`, fail naming the limit, and leave the session resumable.
     - _Requirements: 17.3, 17.4, 17.6, 17.7_
 
-  - [ ]* 12.8 Write property test for ownership isolation
-    - File: `tests/agent/test_ownership_control.py`
+  - [x]* 12.8 Write property test for ownership isolation
+    - Files: `tests/agent/test_approvals.py`, `tests/agent/test_agent_routes.py`, `tests/agent/test_uploads_flow.py`
     - **Property 18: Ownership isolation**
     - **Validates: Requirements 4.10, 11.7, 12.9**
 
-- [ ] 13. Checkpoint - Backend agent complete
+- [x] 13. Checkpoint - Backend agent complete
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 14. API routes
@@ -590,31 +590,31 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - No pre-existing route changes. `SessionView` omits URIs and signed URLs.
     - _Requirements: 12.1, 12.9, 12.13, 13.5, 15.8_
 
-  - [ ]* 14.2 Write API example tests
-    - File: `tests/agent/test_api_examples.py`
+  - [x]* 14.2 Write API example tests
+    - Files: `tests/agent/test_agent_routes.py`, `tests/mcp/test_mcp_server.py`
     - The owner reads and decides the same session and gets equal views.
     - A non-owner is refused for read, decide and cancel.
     - The disabled agent returns `FEATURE_DISABLED` and the existing routes match a recorded baseline.
     - The MCP tool names, parameters and result keys equal the recorded baseline.
     - _Requirements: 6.9, 12.9, 12.15, 13.5, 15.8, 16.12_
 
-  - [ ]* 14.3 Extend the boundary tests for `backend/agent`
+  - [x]* 14.3 Extend the boundary tests for `backend/agent`
     - File: `tests/agent/test_agent_boundaries.py`
     - `backend/agent/*` imports `boto3` only lazily, and imports no `jobs`, `mcp_server` or `ml_factory_cli`. (`backend/agent/jobs.py` is excluded from the `jobs` check.)
     - `backend/agent/*` builds no agent path from a string literal.
     - `catalogue.py` and `tools_*.py` import no store implementation and no boto client.
     - _Requirements: 15.3, 15.6, 15.8, 16.6_
 
-- [ ] 15. Checkpoint - API complete
+- [x] 15. Checkpoint - API complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 16. CLI (`mlf`)
+- [x] 16. CLI (`mlf`)
   - [x] 16.1 Implement `ml_factory_cli/local_files.py`
     - `list_candidates(path)`: `.csv` and `.parquet` (case-insensitive), non-recursive, sorted by file name ascending, at most 100 with the total count, and name, size in bytes and UTC ISO 8601 modification time.
     - `sha256_file(path)`.
     - _Requirements: 7.1, 7.2_
 
-  - [ ] 16.2 Implement `ml_factory_cli/transport.py`
+  - [x] 16.2 Implement `ml_factory_cli/transport.py`
     - Define the `AgentTransport` Protocol, `HttpTransport` (httpx, same identity header as the web UI) and `InProcessTransport(AgentService)`.
     - `InProcessTransport` imports `boto3` and the container lazily, builds clients through `build_session`, and honours `aws_profile` and `aws_role_arn`.
     - _Requirements: 12.1, 12.13, 12.14_
@@ -624,7 +624,7 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - Print every approval request and the current mode.
     - _Requirements: 12.5, 5.10_
 
-  - [ ] 16.4 Implement `ml_factory_cli/__main__.py`
+  - [x] 16.4 Implement `ml_factory_cli/__main__.py`
     - `main(argv)` supports `mlf "<goal>"`, `mlf <session_id>` (matches `ses_[0-9a-f]{16}`), and the subcommands `list`, `approve`, `reject`, `edit`, `mode`, `cancel`, `audit`, `watch` and `data`.
     - Stream by polling `after_seq` every `agent_cli_poll_seconds`, in `seq` order.
     - On an interactive terminal prompt approve, reject or edit. When stdout is not a TTY and an approval is pending, print the request and exit 75 without approving. There is no `--yes` flag.
@@ -633,33 +633,33 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - Offer a cancel prompt that asks whether to stop running jobs.
     - _Requirements: 4.13, 6.7, 6.13, 7.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8_
 
-  - [ ] 16.5 Update `pyproject.toml` for the CLI
+  - [x] 16.5 Update `pyproject.toml` for the CLI
     - Add `[project.scripts] mlf = "ml_factory_cli.__main__:main"`, add `ml_factory_cli*` to the packages, and add the optional extra `cli = ["httpx>=0.27"]`.
     - _Requirements: 12.1, 15.4_
 
-  - [ ]* 16.6 Write property test for candidate listing
+  - [x]* 16.6 Write property test for candidate listing
     - File: `tests/agent/test_uploads.py`
     - **Property 31: Candidate listing**
     - **Validates: Requirements 7.1**
 
-  - [ ]* 16.7 Write property test for CLI stream output
+  - [x]* 16.7 Write property test for CLI stream output
     - File: `tests/agent/test_cli.py`
     - **Property 49: CLI stream output is bounded and ordered**
     - **Validates: Requirements 12.5**
 
-  - [ ]* 16.8 Write property test for the non-interactive CLI
+  - [x]* 16.8 Write property test for the non-interactive CLI
     - File: `tests/agent/test_cli.py`
     - **Property 48: A non-interactive CLI never approves**
     - **Validates: Requirements 12.6**
 
-  - [ ]* 16.9 Write CLI example and boundary tests
+  - [x]* 16.9 Write CLI example and boundary tests
     - File: `tests/agent/test_cli_examples.py`
     - Cover exit codes 3 and 4, `--in-process` honouring `aws_profile` and `aws_role_arn` (stubbed `build_session`), `--watch` interval bounds, and a session created in the CLI and resumed through the API.
     - Check that `ml_factory_cli/*` imports no `backend.agent.loop`, `policy`, `limits` or `store`, and imports `boto3` and the container only inside `InProcessTransport`.
     - _Requirements: 6.7, 12.3, 12.4, 12.7, 12.8, 12.14, 16.12_
 
-- [ ] 17. Web chat panel (last)
-  - [ ] 17.1 Create `backend/api/ui/assistant.js` and `backend/api/ui/assistant.css`
+- [x] 17. Web chat panel (last)
+  - [x] 17.1 Create `backend/api/ui/assistant.js` and `backend/api/ui/assistant.css`
     - Add an "Assistant" entry to the rail, reusing the globals from `app.js` (`api`, `el`, `toast`, `title`, `view`). Do not edit `app.js`.
     - Show the transcript, tool calls, pending approvals with approve, reject and edit controls, the mode switch, the counters and the status.
     - Poll `GET /agent/sessions/{id}?after_seq=N` every `agent_web_poll_seconds`, also while `waiting_for_job`. Call `resume` once when `jobs_ready` is true.
@@ -668,25 +668,25 @@ Tool modules are split into `backend/agent/tools_*.py`. Each exposes `register(r
     - Render all model, tool, file-name and column-name text with `textContent` or text nodes, never `innerHTML`.
     - _Requirements: 4.13, 5.10, 7.2, 8.4, 10.4, 10.5, 12.10, 12.11, 12.12_
 
-  - [ ] 17.2 Register the assets in `backend/api/static.py` and `backend/api/ui/index.html`
+  - [x] 17.2 Register the assets in `backend/api/static.py` and `backend/api/ui/index.html`
     - Add the two files to `_ASSETS` additively.
     - Add one `<script>` and one `<link>` to `index.html`.
     - _Requirements: 12.10, 15.8_
 
-  - [ ]* 17.3 Write web UI tests
+  - [x]* 17.3 Write web UI tests
     - File: `tests/agent/test_web_ui.py`
     - The new assets are served from the allow-list.
     - `index.html` references them.
     - A text scan finds no `innerHTML` assignment from session data in `assistant.js`.
     - _Requirements: 12.10, 16.14_
 
-- [ ] 18. Final manifest and checkpoint
-  - [ ] 18.1 Re-record the inherited manifest
+- [x] 18. Final manifest and checkpoint
+  - [x] 18.1 Re-record the inherited manifest
     - Run the manifest recorder after all additive edits (`config.py`, `container.py`, `audit.py`, `layout.py`, `static.py`, `index.html`, `app.py`, `pyproject.toml`).
     - Confirm `tests/test_inherited_manifest.py` and `tests/test_architecture_boundaries.py` pass.
     - _Requirements: 15.3, 15.5_
 
-  - [ ] 18.2 Final checkpoint - Ensure all tests pass
+  - [x] 18.2 Final checkpoint - Ensure all tests pass
     - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

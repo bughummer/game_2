@@ -77,7 +77,7 @@ class ExecutionResult:
 
     output: ToolOutput | None = None
     error: ToolError | None = None
-    #: ``guard`` for GuardViolation and OrchestrationError, so Autopilot can avoid retrying (Req 5.6).
+    #: ``guard`` for GuardViolation and OrchestrationError, so Autopilot avoids retrying.
     error_kind: str | None = None
     rejections: tuple[InputRejection, ...] = ()
     service_audit_ref: str | None = None
@@ -138,10 +138,13 @@ class ToolExecutor:
             return ExecutionResult(error=ToolError(exc.code, exc.message, dict(exc.details)))
         except (GuardViolation, OrchestrationError) as exc:
             return ExecutionResult(error=ToolError(exc.code, exc.message), error_kind="guard")
-        except Exception:
-            LOGGER.exception("Tool %s failed unexpectedly", spec.name)
+        except Exception as exc:
+            # Handler exceptions can embed credentials or raw data in their messages.
+            LOGGER.error("Tool %s failed unexpectedly (%s)", spec.name, type(exc).__name__)
             return ExecutionResult(
-                error=ToolError(CODE_TOOL_FAILED, f"The tool {spec.name} failed.", {"tool": spec.name})
+                error=ToolError(
+                    CODE_TOOL_FAILED, f"The tool {spec.name} failed.", {"tool": spec.name}
+                )
             )
 
         result = ExecutionResult(output=output)

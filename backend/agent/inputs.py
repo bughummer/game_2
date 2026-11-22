@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from backend.agent.audit import AgentAudit
+from backend.agent.results import ScrubContext, scrub_sensitive
 from backend.agent.tools import ToolSpec
 from backend.auth import Authorizer, Principal
 from backend.errors import AppError
@@ -78,6 +79,7 @@ def _string_problem(value: str) -> str | None:
 
 
 _MESSAGES = {
+    "sensitive_input": "Credentials and sensitive arguments are not accepted.",
     REASON_LOCAL_PATH: "Local file paths are not accepted. Use a dataset id.",
     REASON_URI: "URIs are not accepted. Use a dataset id or an artifact reference.",
     REASON_SIGNED_URL: "Signed URLs are not accepted.",
@@ -126,6 +128,12 @@ class ToolInputs:
             if reason:
                 reject(path, reason)
 
+        for key, value in arguments.items():
+            if scrub_sensitive({key: value}, ScrubContext()) != {key: value} and not any(
+                path == key or path.startswith((key + ".", key + "[")) for path in rejected
+            ):
+                reject(scrub_sensitive(key, ScrubContext()), "sensitive_input")
+
         flags = spec.flags
         for name in flags.instance_args:
             value = arguments.get(name)
@@ -165,7 +173,10 @@ class ToolInputs:
                     result_status="rejected",
                     tool=spec.name,
                     args_hash=args_hash,
-                    detail={"argument": item.argument, "reason": item.reason},
+                    detail={
+                        "argument": scrub_sensitive(item.argument, ScrubContext()),
+                        "reason": item.reason,
+                    },
                 ),
             )
         return result

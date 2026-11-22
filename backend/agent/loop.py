@@ -50,6 +50,7 @@ from backend.agent.converse import (
 )
 from backend.agent.estimate import NO_ESTIMATE, Estimate
 from backend.agent.execute import (
+    CODE_INPUT_REJECTED,
     ExecutionResult,
     ToolError,
     ToolExecutor,
@@ -73,6 +74,7 @@ from backend.agent.limits import (
     check_before_model_call,
     check_before_tool_call,
     check_loop_top,
+    projected_spend,
     register_call,
     would_exceed_costly,
 )
@@ -86,7 +88,7 @@ from backend.agent.narration import (
 )
 from backend.agent.policy import GateAction, GateInput, gate
 from backend.agent.prompts import system_prompt
-from backend.agent.results import ScrubContext, _ledger, shape_result
+from backend.agent.results import ScrubContext, _ledger, scrub_sensitive, shape_result
 from backend.agent.service import CODE_APPROVAL_EXPIRED, CODE_APPROVAL_REJECTED, AgentService
 from backend.agent.store import (
     SessionConflict,
@@ -654,10 +656,15 @@ class AgentLoop:
             )
             return self._refuse(s, record, spec, error, CallState.REFUSED)
 
+        if record.error_code == CODE_INPUT_REJECTED:
+            self._audit_rejection(s, record, "arguments", "sensitive_input")
+            error = ToolError(CODE_INPUT_REJECTED, "The arguments contained sensitive data.")
+            return self._refuse(s, record, spec, error, CallState.FAILED)
+
         # 3. Unknown tool.
         if spec is None:
             if record.tool.startswith(RESERVED_PRIVILEGED_PREFIXES):
-                self._audit_reserved(s, record)
+                self._audit_rejection(s, record, "tool", "reserved_tool_name")
             names = sorted(self._registry.names())
             error = ToolError(
                 CODE_UNKNOWN_TOOL,
@@ -792,7 +799,10 @@ class AgentLoop:
                 CODE_REFUSED, "Not run: the call has no approval.", {"approval_status": status}
             )
             return self._refuse(s, record, spec, error, CallState.REFUSED)
-        if approval.approved_hash != record.args_hash:
+        if (
+            approval.approved_hash != record.args_hash
+            or approval.approved_hash != args_hash(record.tool, record.arguments)
+        ):
             error = ToolError(
                 CODE_APPROVAL_MISMATCH,
                 "Not run: the call's arguments do not match the approved arguments.",
@@ -874,7 +884,11 @@ class AgentLoop:
             )
             # Counted when the call is committed, so a crash cannot let a cap be passed (Req 9.6).
             s.counters.costly_tool_calls += 1
-            s.counters.estimated_spend_usd += max(record.estimate_usd or 0.0, 0.0)
+            s.counters.estimated_spend_usd = float(
+                projected_spend(
+                    s.counters.estimated_spend_usd, max(record.estimate_usd or 0.0, 0.0)
+                )
+            )
         record.state = CallState.EXECUTING
         record.started_at = now
         s.last_activity_at = now
@@ -1010,6 +1024,7 @@ class AgentLoop:
             if (
                 record is None
                 or record is current
+                or record.error_code is not None
                 or record.state is not CallState.REQUESTED
                 or record.approval_id is not None
                 or _turn_has(s, record.turn, ASK_USER)
@@ -1061,7 +1076,9 @@ class AgentLoop:
         except Exception:
             return True
 
-    def _audit_reserved(self, s: Session, record: ToolCallRecord) -> None:
+    def _audit_rejection(
+        self, s: Session, record: ToolCallRecord, argument: str, reason: str
+    ) -> None:
         try:
             self._audit.write(
                 s,
@@ -1075,7 +1092,7 @@ class AgentLoop:
                     result_status="rejected",
                     tool=record.tool[:128],
                     args_hash=record.args_hash,
-                    detail={"argument": "tool", "reason": "reserved_tool_name"},
+                    detail={"argument": argument, "reason": reason},
                 ),
             )
         except AuditWriteError:
@@ -1204,7 +1221,9 @@ class AgentLoop:
         record.truncated = shaped.truncated
         record.injection_suspected = shaped.injection_suspected
         record.result_summary = (
-            error.message[:_MAX_SUMMARY] if error is not None else f"{record.tool} {state.value}"
+            shaped.full["error"]["message"][:_MAX_SUMMARY]
+            if error is not None
+            else f"{record.tool} {state.value}"
         )
         record.finished_at = now
         approval = _approval(s, record.approval_id)
@@ -1300,10 +1319,12 @@ class AgentLoop:
             "stop_reason": turn.stop_reason,
         }
 
+        scrub_context = self._scrub(s)
+        text = scrub_sensitive(turn.text, scrub_context)
         if turn.stop_reason == "max_tokens":
             # Partial tool uses are dropped. Ask once more; a second time fails (retriable).
             repeated = _last_is_max_tokens(s)
-            self._add(s, "error", text=turn.text or None, data={**usage, "reason": FAIL_MAX_TOKENS})
+            self._add(s, "error", text=text or None, data={**usage, "reason": FAIL_MAX_TOKENS})
             if repeated:
                 self._fail(
                     s,
@@ -1315,17 +1336,17 @@ class AgentLoop:
             return StepOutcome.CONTINUE
 
         if s.plan is None and not any(self._is_control(u.name) for u in turn.tool_uses):
-            self._add(s, "error", text=turn.text or None, data={**usage, "reason": FAIL_PLANNING})
+            self._add(s, "error", text=text or None, data={**usage, "reason": FAIL_PLANNING})
             self._fail(s, FAIL_PLANNING, "Planning failed: the model returned no plan.")
             return StepOutcome.DONE
 
-        if turn.text:
-            self._add(s, "assistant_text", text=turn.text, data=usage)
+        if text:
+            self._add(s, "assistant_text", text=text, data=usage)
 
         if not turn.tool_uses:
             results, ledger = self._session_results(s)
             narration = verify_narration(
-                turn.text, ledger, policy=self._settings.narration_policy
+                text, ledger, policy=self._settings.narration_policy
             )
             answer = build_final_answer(narration, results)
             self._audit_unverified(s, narration)
@@ -1337,14 +1358,15 @@ class AgentLoop:
         pending: list[str] = []
         for use in turn.tool_uses:
             spec = self._registry.get(use.name)
-            arguments = dict(use.arguments)
+            arguments = scrub_sensitive(use.arguments, scrub_context)
             s.tool_calls.append(
                 ToolCallRecord(
                     tool_call_id=use.request_id,
                     turn=number,
                     tool=use.name,
                     arguments=arguments,
-                    args_hash=args_hash(use.name, arguments),
+                    args_hash=args_hash(use.name, use.arguments),
+                    error_code=CODE_INPUT_REJECTED if arguments != use.arguments else None,
                     tool_class=spec.tool_class if spec is not None else None,
                     state=CallState.REQUESTED,
                 )
@@ -1484,6 +1506,7 @@ class AgentLoop:
 
     def _fail(self, s: Session, category: str, message: str, *, retriable: bool = False) -> None:
         now = self._clock()
+        message = scrub_sensitive(message, self._scrub(s))
         s.failure = SessionFailure(category=category, message=message, retriable=retriable, at=now)
         s.retriable = retriable
         self._add(s, "error", text=message, data={"category": category, "retriable": retriable})

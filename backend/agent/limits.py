@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 from numbers import Real
 
@@ -136,6 +137,11 @@ def check_before_tool_call(c: SessionCounters, limits: SessionLimits) -> LimitSt
     return _first_stop(c, limits, (LimitName.TOOL_CALLS,))
 
 
+def projected_spend(current: float, increase: float) -> Decimal:
+    """Add the decimal USD amounts represented by the session's JSON numbers."""
+    return Decimal(str(current)) + Decimal(str(increase))
+
+
 def would_exceed_costly(
     c: SessionCounters, limits: SessionLimits, estimate_usd: float | None
 ) -> LimitName | None:
@@ -148,7 +154,9 @@ def would_exceed_costly(
         return LimitName.COSTLY
     if estimate_usd is None:
         return LimitName.SPEND if c.estimated_spend_usd >= limits.max_estimated_spend_usd else None
-    if c.estimated_spend_usd + max(estimate_usd, 0.0) > limits.max_estimated_spend_usd:
+    if projected_spend(c.estimated_spend_usd, max(estimate_usd, 0.0)) > Decimal(
+        str(limits.max_estimated_spend_usd)
+    ):
         return LimitName.SPEND
     return None
 
@@ -181,7 +189,7 @@ def raise_limit(limits: SessionLimits, name: LimitName, amount: float) -> Sessio
     if name is LimitName.SPEND:
         if not _is_positive_decimal(amount):
             raise _invalid(name, amount, "raised by a positive decimal amount in USD")
-        new_value: float = limits.max_estimated_spend_usd + float(amount)
+        new_value: float = float(projected_spend(limits.max_estimated_spend_usd, amount))
     else:
         if not _is_positive_int(amount):
             raise _invalid(name, amount, "raised by a positive integer")

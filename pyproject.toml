@@ -33,6 +33,7 @@ mcp = ["fastmcp==4.1.0"]
 # Optional PDF rendering for reports. Needs native libs (pango/cairo); when absent the
 # reporting service produces JSON + HTML and reports pdf_available=false.
 reports = ["weasyprint>=62"]
+cli = ["httpx>=0.27"]
 dev = [
     "pytest==9.1.1",
     "ruff==0.16.8",
@@ -40,8 +41,11 @@ dev = [
     "hypothesis==6.170.12",
 ]
 
+[project.scripts]
+mlf = "ml_factory_cli.__main__:main"
+
 [tool.setuptools.packages.find]
-include = ["ml_engine*", "jobs*", "backend*", "mcp_server*", "scripts*"]
+include = ["ml_engine*", "jobs*", "backend*", "mcp_server*", "scripts*", "ml_factory_cli*"]
 exclude = ["tests*", "infra*", "container*", "scripts*"]
 
 [tool.setuptools.package-data]

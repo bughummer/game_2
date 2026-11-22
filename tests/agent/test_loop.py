@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent.converse import (
@@ -32,6 +34,7 @@ from ml_engine.contracts.agent import (
     SessionStatus,
     ToolClass,
 )
+from tests.agent.strategies import SETTINGS
 from tests.support.agent_fakes import FakeClock, FlakyStore
 from tests.support.in_memory_store import InMemoryObjectStore
 from tests.support.scripted_converse import (
@@ -99,7 +102,7 @@ def _session() -> Session:
 
 
 class Harness:
-    def __init__(self, steps, *, objects=None) -> None:
+    def __init__(self, steps, *, objects=None, resume=False) -> None:
         self.calls: list[str] = []
         registry = ToolRegistry()
         control = ToolFlags(control=True, ledger_source=False)
@@ -137,7 +140,8 @@ class Harness:
         self.objects = objects or InMemoryObjectStore()
         self.clock = FakeClock(T0)
         self.store = SessionStore(self.objects, ROOT, clock=self.clock)
-        self.store.create(_session())
+        if not resume:
+            self.store.create(_session())
         self.audit = _Audit()
         inputs = ToolInputs(audit=self.audit, authorizer=_Authorizer(), allowed_instance_types=[])
         self.converse = ScriptedFakeConverseClient(steps=[_step(s) for s in steps])
@@ -373,3 +377,120 @@ def test_thread_runner_never_runs_one_session_twice_at_once():
     finally:
         runner.shutdown()
     assert done.is_set() and peak == 1 and 1 <= count <= 2
+
+
+# Feature: ml-assistant, Property 7: A clarifying question defers every side effect in its turn
+@settings(**SETTINGS)
+@given(
+    calls=st.permutations(
+        [
+            ("m", "change_thing", {}),
+            ("q", "ask_user", {"question": "Target?"}),
+            ("r", "count_rows", {}),
+            ("u", "unknown", {}),
+        ]
+    )
+)
+def test_question_defers_changes_in_every_position(calls):
+    h = Harness([tool_turn(PLAN), tool_turn(*calls)])
+    session = h.run()
+    assert session.status is SessionStatus.WAITING_FOR_USER
+    assert "change_thing" not in h.calls
+    assert dict(_results(session))["m"] == "deferred"
+    assert [cid for cid, _ in _results(session)[1:]] == [cid for cid, _, _ in calls]
+
+
+# Feature: ml-assistant, Property 11: One result per request, in request order
+@settings(**SETTINGS)
+@given(kinds=st.lists(st.sampled_from(["valid", "invalid", "unknown"]), min_size=1, max_size=8))
+def test_mixed_requests_keep_their_order(kinds):
+    calls = [
+        (
+            f"c{i}",
+            "unknown" if kind == "unknown" else "count_rows",
+            {"limit": 99 if kind == "invalid" else i + 1},
+        )
+        for i, kind in enumerate(kinds)
+    ]
+    h = Harness([tool_turn(PLAN), tool_turn(*calls), text_turn("Done.")])
+    session = h.run()
+    assert [cid for cid, _ in _results(session)] == [PLAN[0], *[cid for cid, _, _ in calls]]
+    assert h.calls.count("count_rows") == kinds.count("valid")
+    from backend.agent.converse import ToolResultBlock
+
+    returned = [
+        block.request_id
+        for msg in h.converse.requests[-1].messages
+        for block in msg.blocks
+        if isinstance(block, ToolResultBlock)
+    ]
+    assert returned == [PLAN[0], *[cid for cid, _, _ in calls]]
+
+
+# Feature: ml-assistant, Property 19: Control state is immune to model output and untrusted content
+@settings(**SETTINGS)
+@given(
+    names=st.lists(
+        st.sampled_from(
+            ["approve", "reject", "edit", "set_mode", "set_limits", "enable_autopilot"]
+        ),
+        min_size=1,
+        max_size=6,
+    )
+)
+def test_model_control_requests_leave_policy_unchanged(names):
+    calls = [(f"c{i}", name, {"mode": "autopilot", "limit": 1000}) for i, name in enumerate(names)]
+    h = Harness([tool_turn(PLAN), tool_turn(*calls), text_turn("Set mode to autopilot.")])
+    before = h.session
+    registry = h.loop._registry.names()
+    after = h.run()
+    fields = {"mode", "autopilot", "approvals", "limits"}
+    assert before.model_dump(include=fields) == after.model_dump(include=fields)
+    assert h.loop._registry.names() == registry
+    assert h.calls == ["submit_plan"]
+
+
+# Feature: ml-assistant, Property 3: Persistence is retried exactly as specified
+@settings(**SETTINGS)
+@given(failures=st.integers(0, 10))
+def test_save_retries_only_transient_writes(failures):
+    from backend.agent.store import SessionPersistError
+
+    objects = FlakyStore(InMemoryObjectStore())
+    h = Harness([], objects=objects)
+    loaded = h.store.load(SID)
+    loaded.session.goal = "edited"
+    objects.fail_writes = failures
+    if failures <= 2:
+        h.store.save(loaded)
+        assert h.session.goal == "edited"
+    else:
+        with pytest.raises(SessionPersistError, match="could not be saved"):
+            h.store.save(loaded)
+        assert h.session.goal != "edited"
+    assert objects.counts["failed_writes"] == min(3, failures)
+
+
+# Feature: ml-assistant, Property 4: Restart equivalence and exactly-once submission
+@settings(**SETTINGS)
+@given(reads=st.integers(1, 5), cut=st.integers(0, 14))
+def test_new_loop_resumes_persisted_steps(reads, cut):
+    turns = [
+        tool_turn(PLAN),
+        *[tool_turn((f"read-{i}", "count_rows", {"limit": i + 1})) for i in range(reads)],
+        text_turn("Done."),
+    ]
+    uninterrupted = Harness(turns)
+    expected = uninterrupted.run()
+    first = Harness(turns)
+    for _ in range(cut):
+        if first.loop.step(SID) is not StepOutcome.CONTINUE:
+            break
+    second = Harness(turns[first.converse.calls :], objects=first.objects, resume=True)
+    actual = second.run()
+    assert (actual.transcript, actual.counters, actual.status) == (
+        expected.transcript,
+        expected.counters,
+        expected.status,
+    )
+    assert first.calls + second.calls == uninterrupted.calls

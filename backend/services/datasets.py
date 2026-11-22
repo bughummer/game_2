@@ -57,6 +57,10 @@ _UNSAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_NAME_LENGTH = 120
 
 
+class DatasetParseError(ValidationError):
+    """The uploaded bytes could not be read in the declared format."""
+
+
 class DatasetService:
     def __init__(self, *, settings: Settings, store: ObjectStore, s3_client: Any = None) -> None:
         self._settings = settings
@@ -247,7 +251,7 @@ class DatasetService:
         try:
             return _read_parquet_head(source, limit)
         except Exception as error:
-            raise ValidationError(
+            raise DatasetParseError(
                 "The file could not be read as parquet.", {"reason": str(error)[:200]}
             ) from error
 
@@ -264,7 +268,7 @@ class DatasetService:
         except ValidationError:
             raise
         except Exception as error:
-            raise ValidationError(
+            raise DatasetParseError(
                 f"The file could not be read as {file_format}. Check the delimiter and encoding.",
                 {"reason": str(error)[:200]},
             ) from error

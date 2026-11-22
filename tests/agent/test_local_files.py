@@ -7,6 +7,8 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from backend.agent.service import LocalFileInput
 from ml_factory_cli.local_files import list_candidates, sha256_file
@@ -84,3 +86,31 @@ def test_sha256_file_matches_hashlib_across_chunks(tmp_path):
     p = _touch(tmp_path / "big.csv", data)
     assert sha256_file(p) == hashlib.sha256(data).hexdigest()
     assert sha256_file(_touch(tmp_path / "empty.csv", b"")) == hashlib.sha256(b"").hexdigest()
+
+
+# Feature: ml-assistant, Property 31: Candidate listing
+@settings(max_examples=100, deadline=None)
+@given(
+    files=st.lists(
+        st.tuples(
+            st.sampled_from([".csv", ".CSV", ".parquet", ".PARQUET", ".txt", ".csv.bak"]),
+            st.binary(max_size=128),
+        ),
+        max_size=12,
+    )
+)
+def test_candidate_listing_property(tmp_path_factory, files):
+    folder = tmp_path_factory.mktemp("candidates")
+    expected = []
+    for index, (extension, data) in enumerate(files):
+        name = f"file{index:03d}{extension}"
+        _touch(folder / name, data)
+        if extension.lower() in (".csv", ".parquet"):
+            expected.append((name, data))
+    found, total = list_candidates(folder)
+    assert total == len(expected)
+    assert [item["name"] for item in found] == [name for name, _ in expected]
+    for item, (_, data) in zip(found, expected, strict=True):
+        assert item["size_bytes"] == len(data)
+        assert item["sha256"] == hashlib.sha256(data).hexdigest()
+        assert datetime.fromisoformat(item["modified_at"]).utcoffset() == timedelta(0)

@@ -4,8 +4,10 @@ Rules 1 to 8 from the design, first match wins. Anything not matched fails close
 """
 
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 
+from backend.agent.limits import projected_spend
 from backend.agent.tools import ToolSpec
 from ml_engine.contracts.agent import Mode, ToolClass
 
@@ -76,7 +78,9 @@ def gate(inp: GateInput) -> GateDecision:
             return _approval("no_grant")
         if inp.estimate_usd is None:
             return _approval("estimate_unavailable")
-        if inp.session_spend_usd + inp.estimate_usd > inp.autopilot_max_spend_usd:
+        if projected_spend(inp.session_spend_usd, inp.estimate_usd) > Decimal(
+            str(inp.autopilot_max_spend_usd)
+        ):
             return _approval("spend_cap")
         if inp.guard_refused_before:
             return _approval("guard_refused_before")

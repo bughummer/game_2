@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent.estimate import Estimate
@@ -30,6 +32,7 @@ from ml_engine.contracts.agent import (
     args_hash,
 )
 from ml_engine.io.layout import AgentLayout
+from tests.agent.strategies import SETTINGS
 from tests.support.agent_fakes import FakeClock
 from tests.support.in_memory_store import InMemoryObjectStore
 from tests.support.scripted_converse import (
@@ -210,11 +213,14 @@ def _approval_for(s: Session, call_id: str):
     return next(a for a in s.approvals if a.tool_call_id == call_id)
 
 
-def test_approved_call_runs_once_with_the_shown_arguments():
+# Feature: ml-assistant, Property 14: The approved call is exactly the shown call, run at most once
+@settings(**SETTINGS)
+@given(original=st.integers(1, 5), replacement=st.integers(6, 10), replays=st.integers(1, 5))
+def test_approved_call_runs_once_with_the_shown_arguments(original, replacement, replays):
     h = Harness(
         [
             tool_turn(PLAN),
-            tool_turn(("tu-t", "train", {"experiment_id": "exp-1", "n": 2})),
+            tool_turn(("tu-t", "train", {"experiment_id": "exp-1", "n": original})),
             text_turn("Training was submitted."),
         ]
     )
@@ -226,7 +232,8 @@ def test_approved_call_runs_once_with_the_shown_arguments():
     assert h.train_args == []
 
     # The user edits the arguments, then approves exactly what is now shown.
-    edited = {"experiment_id": "exp-1", "n": 3}
+    assert approval.arguments == {"experiment_id": "exp-1", "n": original}
+    edited = {"experiment_id": "exp-1", "n": replacement}
     h.service.decide_approval(
         ALICE, SID, approval.approval_id, "edit", args_hash=approval.args_hash, edited_args=edited
     )
@@ -242,10 +249,15 @@ def test_approved_call_runs_once_with_the_shown_arguments():
     marker = json.loads(
         h.objects.read_bytes(AgentLayout.for_session(ROOT, SID).inflight(record.idempotency_key))
     )
-    assert (marker["tool"], marker["args_hash"], marker["experiment_id"]) == ("train", shown, "exp-1")
+    assert (marker["tool"], marker["args_hash"], marker["experiment_id"]) == (
+        "train",
+        shown,
+        "exp-1",
+    )
     assert s.status is SessionStatus.COMPLETED
 
-    h.run()  # running again never re-executes the approved call
+    for _ in range(replays):
+        h.run()
     assert len(h.train_args) == 1
 
 
@@ -341,3 +353,150 @@ def test_expired_approval_is_swept_at_the_next_step():
     assert _call(s, "tu-t").error_code == "APPROVAL_EXPIRED"
     assert s.status is SessionStatus.WAITING_FOR_USER
     assert h.train_args == []
+
+
+# Feature: ml-assistant, Property 23: Counters are bounded and exact
+@settings(**SETTINGS)
+@given(limit=st.integers(1, 5), requested=st.integers(1, 8))
+def test_costly_counter_and_spend_match_executions(limit, requested):
+    calls = [(f"tu-{i}", "train", {"experiment_id": "exp-1", "n": i + 1}) for i in range(requested)]
+    h = Harness(
+        [tool_turn(PLAN), tool_turn(*calls), text_turn("Done.")], mode=Mode.AUTOPILOT, estimate=0.25
+    )
+    with h.store.transaction(SID) as session:
+        session.limits.max_costly_tool_calls = limit
+    s = h.run()
+    expected = min(limit, requested)
+    assert len(h.train_args) == s.counters.costly_tool_calls == expected
+    assert s.counters.estimated_spend_usd == expected * 0.25
+    assert s.counters.tool_calls <= s.limits.max_tool_calls
+    assert s.counters.converse_turns <= s.limits.max_converse_turns
+
+
+def test_autopilot_preserves_selection_and_budget_after_guard_refusal():
+
+    from backend.agent.tools_features import DecideFeaturesArgs, decide_features_protected
+
+    selection = ["age", "tenure"]
+    attempts = [
+        ("first", "train", {"experiment_id": "exp-1", "n": 1}),
+        ("retry", "train", {"experiment_id": "exp-1", "n": 2}),
+        ("drop", "decide_features", {"experiment_id": "exp-1", "selected_features": ["age"]}),
+    ]
+    h = Harness([tool_turn(PLAN), tool_turn(*attempts), text_turn("Done.")], mode=Mode.AUTOPILOT)
+    h.guard_code = "BUDGET_EXCEEDED"
+    review = SimpleNamespace(features=[SimpleNamespace(feature=name) for name in selection])
+    h.loop._services = SimpleNamespace(
+        experiments=SimpleNamespace(feature_review=lambda eid: review)
+    )
+
+    def save(ctx, args):
+        selection[:] = args.selected_features
+        return ToolOutput(data={})
+
+    h.registry.register(
+        "decide_features",
+        classes=[ToolClass.MUTATING],
+        description="choose features",
+        input_model=DecideFeaturesArgs,
+        handler=save,
+        protected=decide_features_protected,
+    )
+    session = h.run()
+    assert _call(session, "first").error_code == "BUDGET_EXCEEDED"
+    for call_id in ("retry", "drop"):
+        approval = _approval_for(session, call_id)
+        assert approval.status is ApprovalStatus.PENDING
+        h.service.decide_approval(
+            ALICE, SID, approval.approval_id, "reject", args_hash=approval.args_hash
+        )
+        session = h.run()
+    assert h.train_args == [attempts[0][2]]
+    assert session.counters.estimated_spend_usd < session.autopilot.max_estimated_spend_usd
+    assert selection == ["age", "tenure"]
+
+
+def test_changed_persisted_arguments_require_a_new_approval():
+    args = {"experiment_id": "exp-1", "n": 1}
+    h = Harness([tool_turn(PLAN), tool_turn(("t", "train", args)), text_turn("Done.")])
+    approval = _approval_for(h.run(), "t")
+    h.service.decide_approval(
+        ALICE, SID, approval.approval_id, "approve", args_hash=approval.args_hash
+    )
+    # An inconsistent persisted record still has the old digest.
+    with h.store.transaction(SID) as session:
+        _call(session, "t").arguments["n"] = 2
+    session = h.run()
+    assert _call(session, "t").error_code == "APPROVAL_MISMATCH"
+    assert h.train_args == []
+    assert session.counters.costly_tool_calls == 0
+
+
+def test_failed_costly_call_cannot_reuse_earlier_approval():
+    args = {"experiment_id": "exp-1", "n": 1}
+    h = Harness(
+        [
+            tool_turn(PLAN),
+            tool_turn(("first", "train", args)),
+            tool_turn(("retry", "train", args)),
+            text_turn("Done."),
+        ]
+    )
+    h.guard_code = "BUDGET_EXCEEDED"
+    first = _approval_for(h.run(), "first")
+    h.service.decide_approval(ALICE, SID, first.approval_id, "approve", args_hash=first.args_hash)
+    session = h.run()
+    second = _approval_for(session, "retry")
+    assert (second.status, session.status) == (
+        ApprovalStatus.PENDING,
+        SessionStatus.WAITING_FOR_APPROVAL,
+    )
+    assert first.approval_id != second.approval_id and first.args_hash == second.args_hash
+    assert _call(session, "first").error_code == "BUDGET_EXCEEDED"
+    assert h.train_args == [args]
+
+
+# Feature: ml-assistant, Property 20: Autopilot enablement and switching
+@settings(**SETTINGS)
+@given(original=st.integers(1, 10), following=st.integers(1, 10))
+def test_switch_during_costly_handler_applies_to_the_next_call(original, following):
+    first = {"experiment_id": "exp-1", "n": original}
+    second = {"experiment_id": "exp-1", "n": following}
+    from unittest.mock import patch
+
+    train = Harness._train
+
+    def switch_and_train(harness, ctx, args):
+        harness.service.set_mode(ALICE, SID, Mode.SUPERVISED)
+        return train(harness, ctx, args)
+
+    with patch.object(Harness, "_train", switch_and_train):
+        h = Harness(
+            [tool_turn(PLAN), tool_turn(("one", "train", first), ("two", "train", second))],
+            mode=Mode.AUTOPILOT,
+        )
+        session = h.run()
+    assert h.train_args == [first]
+    assert _call(session, "one").state is CallState.SUCCEEDED
+    assert _approval_for(session, "two").status is ApprovalStatus.PENDING
+
+
+# Feature: ml-assistant, Property 21: Autopilot executes only within every limit
+@settings(**SETTINGS)
+@given(cents=st.integers(1, 100), count=st.integers(2, 6))
+def test_decimal_spend_allows_the_last_affordable_call(cents, count):
+    cap = cents * count / 100
+    calls = [(f"c{i}", "train", {"experiment_id": "exp-1", "n": i + 1}) for i in range(count + 1)]
+    h = Harness(
+        [tool_turn(PLAN), tool_turn(*calls), text_turn("Done.")],
+        mode=Mode.AUTOPILOT,
+        estimate=cents / 100,
+        spend=cap,
+    )
+    with h.store.transaction(SID) as s:
+        s.autopilot.max_estimated_spend_usd = cap
+        s.limits.max_costly_tool_calls = count + 1
+    session = h.run()
+    assert h.train_args == [args for _, _, args in calls[:-1]]
+    assert session.counters.estimated_spend_usd == cap
+    assert _call(session, calls[-1][0]).error_code == "LIMIT_REACHED"
