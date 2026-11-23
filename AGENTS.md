@@ -70,27 +70,45 @@ Full spec: `.kiro/specs/ml-assistant/requirements.md`, `design.md`, `tasks.md`.
 | `tests/agent/` | Agent tests |
 | `infra/server/` | systemd unit and `ml-factory.env.example` (the deployment settings) |
 
-## Status (as of 2026-11-21)
+## Status (as of 2026-11-23)
 
-The required ML Assistant implementation is complete: agent service, API, `mlf` CLI and web
-chat. The session-store corrupt-record fix is in place. The inherited manifest is current.
-The optional ML Assistant coverage is implemented in the offline suite. The task list links
-each item to its tests. The full offline suite and `ruff check .` pass. The local test environment uses scikit-learn
-1.9.0 because the byte-for-byte golden fixture records that version.
+All 125 tasks in `.kiro/specs/ml-assistant/tasks.md` are marked done, optional tests included.
+The offline suite passes (`pytest -q`: no failures, 2 skipped real-AWS tests) and `ruff check .`
+is clean. Built: contracts, settings, Converse client, session store, tool catalogue, loop with
+approvals, Autopilot, limits, cost estimates, job waiting and crash recovery, cancel, narration
+grounding, audit trail, local uploads, API routes, smoke harness, the `mlf` CLI (`mlf --help`
+works) and the web chat files (`assistant.js`, `assistant.css`, registered in `static.py` and
+`index.html`).
 
 **Never run against real AWS.** Whether the Bedrock model supports tool use, whether IAM allows
-everything, and whether a real model follows the system prompt are all unverified.
+everything, and whether a real model follows the system prompt are all unverified. Nothing has
+been tried in a browser or with a real terminal session either.
 
-## To-do
+## To-do, in order
 
-- **Do not run the real-AWS smoke test.** Model tool-use support, IAM permissions and behavior
-  against a real model remain unverified. The owner's no-real-AWS instruction above applies.
+1. **Real-AWS smoke test** (costs at most 5 USD). In cmd, from `ml_factory_2`, with AWS
+   credentials set and `ML_FACTORY_BEDROCK_MODEL_ID` set to a tool-use model:
+   ```
+   set ML_FACTORY_AWS_TESTS=1
+   set ML_FACTORY_AGENT_SMOKE=1
+   .venv\Scripts\python -m scripts.agent_smoke
+   ```
+   Fix whatever it finds (model tool support, IAM, prompt quality).
+2. **Try it by hand**: start the server with `ML_FACTORY_AGENT_ENABLED=true`, run
+   `mlf "your goal"`, then open the web UI and use the Assistant panel.
+3. **Review the system prompt** (`backend/agent/prompts.py`) after seeing a real session.
+4. **Deployment**: there is no Dockerfile or compose file; the project deploys as the systemd
+   service in `infra/server/`. Add container files only if needed. Add the agent model ARN to
+   `infra/iam/control_plane_policy.json` if the agent model differs from the reasoning model, and
+   a CORS rule on the artifact bucket allowing PUT from the console origin (browser uploads).
+5. **Commit**: the repo has no commits and no remote yet.
 
 Known gaps to keep in mind:
-- `scripts/agent_smoke.py` calls the private `AgentService._stop_jobs` to stop jobs without
-  cancelling; a public method would be cleaner.
+- `scripts/agent_smoke.py` calls the private `AgentService._stop_jobs`; a public method would be
+  cleaner.
 - `RowCounter` reads the private `DatasetService._s3`.
-
+- Not checked: whether the engine's own hyperparameter search is reachable through the tools.
+- Sessions assume one backend process; several replicas would weaken the session lease.
 ## Running things
 
 ```powershell

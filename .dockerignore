@@ -1,0 +1,11 @@
+.venv/
+.git/
+.kiro/
+.hypothesis/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+tests/
+infra/
+.env
+.env.*
